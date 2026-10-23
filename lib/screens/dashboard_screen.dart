@@ -32,6 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onRemoveTeammate(Teammate teammate) async {
+    if (teammate.isCurrentUser) return;
     final confirmed = await RemoveTeammateDialog.show(context, teammate);
     if (confirmed == true && mounted) {
       final repo = context.read<TeammateRepository>();
@@ -65,7 +66,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final repo = context.watch<TeammateRepository>();
     final teammates = repo.leaderboardTeammates;
     final daily = repo.dailyChallenge;
-    final currentUser = repo.currentUserTeammate;
+    final primaryProfile = repo.primaryProfile;
+    final primaryUsername = repo.primaryUsername;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -142,21 +144,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ),
                             child: Center(
-                              child: currentUser?.effectiveAvatar.isNotEmpty ==
-                                      true
+                              child: primaryProfile?.userAvatar != null &&
+                                      primaryProfile!.userAvatar!.isNotEmpty
                                   ? ClipRRect(
                                       borderRadius:
                                           BorderRadius.circular(18),
                                       child: Image.network(
-                                        currentUser!.effectiveAvatar,
+                                        primaryProfile.userAvatar!,
                                         width: 36,
                                         height: 36,
                                         fit: BoxFit.cover,
                                         errorBuilder:
                                             (context, error, stackTrace) =>
-                                                const Text(
-                                          'H',
-                                          style: TextStyle(
+                                                Text(
+                                          (primaryProfile.realName?.isNotEmpty == true
+                                                  ? primaryProfile.realName![0]
+                                                  : (primaryUsername?.isNotEmpty == true
+                                                      ? primaryUsername![0]
+                                                      : 'U'))
+                                              .toUpperCase(),
+                                          style: const TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w700,
                                             color: AppColors.primary,
@@ -164,9 +171,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         ),
                                       ),
                                     )
-                                  : const Text(
-                                      'H',
-                                      style: TextStyle(
+                                  : Text(
+                                      (primaryProfile?.realName?.isNotEmpty == true
+                                              ? primaryProfile!.realName![0]
+                                              : (primaryUsername?.isNotEmpty == true
+                                                  ? primaryUsername![0]
+                                                  : 'U'))
+                                          .toUpperCase(),
+                                      style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
                                         color: AppColors.primary,
@@ -218,7 +230,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       fontSize: 14,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Search teammates by name or @handle...',
+                      hintText: 'Search teammates',
                       prefixIcon: const Icon(
                         Icons.search,
                         size: 20,
@@ -329,13 +341,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           rank: index + 1,
                           teammate: teammate,
                           onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => TeammateDetailScreen(
-                                  username: teammate.username,
+                            if (teammate.isCurrentUser) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const UserProfileScreen(),
                                 ),
-                              ),
-                            );
+                              );
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TeammateDetailScreen(
+                                    username: teammate.username,
+                                  ),
+                                ),
+                              );
+                            }
                           },
                           onRemove: () => _onRemoveTeammate(teammate),
                         );

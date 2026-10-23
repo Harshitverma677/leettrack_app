@@ -12,9 +12,9 @@ class WeeklyProgressScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<TeammateRepository>();
-    final currentUser = repo.currentUserTeammate;
+    final primaryUsername = repo.primaryUsername;
+    final profile = repo.primaryProfile;
     final dailyGoal = repo.dailyGoal;
-    final profile = currentUser?.profile;
 
     // Calculate last 7 days data from real submission calendar
     final now = DateTime.now();
@@ -26,7 +26,7 @@ class WeeklyProgressScreen extends StatelessWidget {
 
     for (int i = 6; i >= 0; i--) {
       final date = todayUtc.subtract(Duration(days: i));
-      final solves = profile?.getSolvesOnDate(date) ?? 0;
+      final int solves = profile?.getSolvesOnDate(date) ?? 0;
       totalWeekSolves += solves;
       if (solves > 0) activeDays++;
 
@@ -65,7 +65,7 @@ class WeeklyProgressScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // User context pill
-            if (currentUser != null)
+            if (primaryUsername != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(
@@ -86,7 +86,7 @@ class WeeklyProgressScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Tracking: ${currentUser.effectiveName} (@${currentUser.username})',
+                      'Tracking: ${profile?.realName ?? primaryUsername} (@$primaryUsername)',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

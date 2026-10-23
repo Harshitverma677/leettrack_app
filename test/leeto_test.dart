@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +13,7 @@ import 'package:leeto/models/leetcode_submission.dart';
 import 'package:leeto/models/teammate.dart';
 import 'package:leeto/repositories/teammate_repository.dart';
 import 'package:leeto/screens/dashboard_screen.dart';
+import 'package:leeto/screens/primary_profile_setup_screen.dart';
 import 'package:leeto/screens/team_activity_screen.dart';
 import 'package:leeto/screens/teammate_detail_screen.dart';
 import 'package:leeto/screens/user_profile_screen.dart';
@@ -210,29 +212,50 @@ void main() {
       );
     });
 
-    test('Loads initial roster and filters by search query', () async {
-      await repo.initialize();
-      expect(repo.rawTeammates.length, 3);
+    test('Primary profile setup and separation from teammates', () async {
+      expect(repo.hasPrimaryProfile, isFalse);
 
-      repo.setSearchQuery('harshit');
-      expect(repo.leaderboardTeammates.length, 1);
-      expect(repo.leaderboardTeammates.first.username, 'vuvcVjbwmU');
+      await repo.setupPrimaryProfile('myuser');
+      expect(repo.hasPrimaryProfile, isTrue);
+      expect(repo.primaryUsername, 'myuser');
+      expect(repo.primaryProfile?.totalSolved, 42);
 
-      repo.setSearchQuery('');
-      expect(repo.leaderboardTeammates.length, 3);
+      // Verify primary profile is not in teammates list
+      expect(repo.rawTeammates.any((t) => t.username == 'myuser'), isFalse);
+
+      // Cannot add primary user as a teammate
+      expect(
+        () => repo.addTeammate('myuser'),
+        throwsA(isA<Exception>()),
+      );
     });
 
-    test('wipeTeammates removes other teammates and preserves current user',
+    test('Loads initial teammates roster and filters by search query',
         () async {
       await repo.initialize();
-      expect(repo.rawTeammates.length, 3);
-      expect(repo.otherTeammatesCount, 2);
+      expect(repo.rawTeammates.length, 2);
+
+      repo.setSearchQuery('palak');
+      expect(repo.leaderboardTeammates.length, 1);
+      expect(repo.leaderboardTeammates.first.username, '_palakdeep');
+
+      repo.setSearchQuery('');
+      expect(repo.leaderboardTeammates.length, 2);
+    });
+
+    test('wipeTeammates removes all teammates and preserves primary profile',
+        () async {
+      await storageService.savePrimaryUsername('vuvcVjbwmU');
+      await repo.initialize();
+      expect(repo.primaryUsername, 'vuvcVjbwmU');
+      expect(repo.rawTeammates.length, 2);
+      expect(repo.teammateCount, 2);
 
       final removed = await repo.wipeTeammates();
       expect(removed, 2);
-      expect(repo.rawTeammates.length, 1);
-      expect(repo.rawTeammates.first.username.toLowerCase(), 'vuvcvjbwmu');
-      expect(repo.otherTeammatesCount, 0);
+      expect(repo.rawTeammates.length, 0);
+      expect(repo.teammateCount, 0);
+      expect(repo.primaryUsername, 'vuvcVjbwmU');
     });
 
     test('Rejects duplicate teammates and empty usernames', () async {
@@ -244,26 +267,93 @@ void main() {
       );
 
       expect(
-        () => repo.addTeammate('vuvcVjbwmU'),
+        () => repo.addTeammate('_palakdeep'),
         throwsA(isA<Exception>()),
       );
     });
 
     test('Removes a teammate properly', () async {
       await repo.initialize();
-      expect(repo.rawTeammates.length, 3);
+      expect(repo.rawTeammates.length, 2);
 
       await repo.removeTeammate('_palakdeep');
-      expect(repo.rawTeammates.length, 2);
+      expect(repo.rawTeammates.length, 1);
       expect(repo.findByUsername('_palakdeep'), isNull);
     });
   });
 
   group('Widget Tests', () {
+    testWidgets('PrimaryProfileSetupScreen validates input and submits',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final storageService = await LocalStorageService.create();
+
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          json.encode({
+            'data': {
+              'matchedUser': {
+                'username': 'verifiedUser',
+                'profile': {'realName': 'Verified Person'},
+                'submitStatsGlobal': {
+                  'acSubmissionNum': [
+                    {'difficulty': 'All', 'count': 100}
+                  ]
+                },
+                'submissionCalendar': '{}',
+                'tagProblemCounts': {
+                  'fundamental': [],
+                  'intermediate': [],
+                  'advanced': [],
+                },
+              }
+            }
+          }),
+          200,
+        );
+      });
+
+      final graphQLService = LeetCodeGraphQLService(client: mockClient);
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ChangeNotifierProvider<TeammateRepository>.value(
+            value: repo,
+            child: const PrimaryProfileSetupScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set up your LeetCode profile'), findsOneWidget);
+      expect(find.text('Verify & Continue'), findsOneWidget);
+
+      // Submit empty input -> displays validation error
+      await tester.tap(find.text('Verify & Continue'));
+      await tester.pumpAndSettle();
+      expect(find.text('Please enter your LeetCode username'), findsOneWidget);
+
+      // Enter valid username -> verifies and sets up primary user
+      await tester.enterText(find.byType(TextField), 'verifiedUser');
+      await tester.tap(find.text('Verify & Continue'));
+      await tester.pumpAndSettle();
+
+      expect(repo.hasPrimaryProfile, isTrue);
+      expect(repo.primaryUsername, 'verifiedUser');
+    });
+
     testWidgets(
         'Dashboard renders + Add Member, no LEETO branding, no Weekly Analysis',
         (tester) async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'testprimary',
+      });
       final storageService = await LocalStorageService.create();
       final graphQLService = LeetCodeGraphQLService();
 
@@ -398,12 +488,8 @@ void main() {
         storageService: storageService,
       );
 
+      await storageService.savePrimaryUsername('vuvcVjbwmU');
       await storageService.saveTeammates([
-        const Teammate(
-          username: 'vuvcVjbwmU',
-          displayName: 'Harshit Verma',
-          isCurrentUser: true,
-        ),
         const Teammate(
           username: 'palakdeep',
           displayName: 'Palakdeep',
@@ -434,7 +520,7 @@ void main() {
     });
 
     testWidgets(
-        'TeamActivityScreen displays rolling past 7 days submissions only',
+        'TeamActivityScreen groups submissions under separate date headings',
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       final storageService = await LocalStorageService.create();
@@ -445,7 +531,8 @@ void main() {
         storageService: storageService,
       );
 
-      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final now = DateTime.now();
+      final nowSec = now.millisecondsSinceEpoch ~/ 1000;
 
       await storageService.saveTeammates([
         Teammate(
@@ -453,14 +540,21 @@ void main() {
           displayName: 'Palakdeep',
           recentSubmissions: [
             LeetCodeSubmission(
-              title: 'Recent Problem 1',
-              titleSlug: 'recent-problem-1',
-              timestamp: nowSec - 3600, // 1 hr ago
+              title: 'Today Problem 1',
+              titleSlug: 'today-problem-1',
+              timestamp: nowSec - 10, // 10 seconds ago
               statusDisplay: 'Accepted',
               difficulty: 'Easy',
             ),
             LeetCodeSubmission(
-              title: 'Old Problem Past 7 Days',
+              title: 'Today Problem 2',
+              titleSlug: 'today-problem-2',
+              timestamp: nowSec - 30, // 30 seconds ago
+              statusDisplay: 'Accepted',
+              difficulty: 'Medium',
+            ),
+            LeetCodeSubmission(
+              title: 'Old Problem Beyond 7 Days',
               titleSlug: 'old-problem',
               timestamp: nowSec - (10 * 86400), // 10 days ago
               statusDisplay: 'Accepted',
@@ -484,13 +578,252 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Recent problem should be displayed
-      expect(find.text('Recent Problem 1'), findsOneWidget);
-      expect(find.text('Accepted'), findsOneWidget);
-      expect(find.text('Easy'), findsOneWidget);
+      // Today date heading should be rendered
+      expect(find.textContaining('Today •'), findsOneWidget);
 
-      // Old problem beyond 7 days should be filtered out
-      expect(find.text('Old Problem Past 7 Days'), findsNothing);
+      // Both submissions from today rendered as separate items
+      expect(find.text('Today Problem 1'), findsOneWidget);
+      expect(find.text('Today Problem 2'), findsOneWidget);
+
+      // Problem beyond 7 days should be filtered out
+      expect(find.text('Old Problem Beyond 7 Days'), findsNothing);
+    });
+
+    testWidgets(
+        'Leaderboard includes primary profile as You and avoids duplicate entries',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'myhandle',
+      });
+      final storageService = await LocalStorageService.create();
+      await storageService.savePrimaryProfile(const LeetCodeProfile(
+        username: 'myhandle',
+        realName: 'My Full Name',
+        totalSolved: 300,
+        easySolved: 200,
+        mediumSolved: 90,
+        hardSolved: 10,
+        streak: 15,
+        hasSolvedToday: false,
+        submissionCalendar: {},
+        topTopics: [],
+      ));
+
+      // Teammate list contains a duplicate of primary handle (different case) plus a peer
+      await storageService.saveTeammates([
+        const Teammate(
+          username: 'MYHANDLE',
+          displayName: 'Duplicate Handle',
+          isCurrentUser: false,
+        ),
+        const Teammate(
+          username: 'bob',
+          displayName: 'Bob The Teammate',
+          profile: LeetCodeProfile(
+            username: 'bob',
+            totalSolved: 120,
+            easySolved: 80,
+            mediumSolved: 40,
+            hardSolved: 0,
+            streak: 3,
+            hasSolvedToday: false,
+            submissionCalendar: {},
+            topTopics: [],
+          ),
+          isCurrentUser: false,
+        ),
+      ]);
+
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ChangeNotifierProvider<TeammateRepository>.value(
+            value: repo,
+            child: const DashboardScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Check primary profile has 'You' badge
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('My Full Name'), findsOneWidget);
+      expect(find.text('@myhandle'), findsOneWidget);
+
+      // Check Bob is also in leaderboard
+      expect(find.text('Bob The Teammate'), findsOneWidget);
+      expect(find.text('@bob'), findsOneWidget);
+
+      // Check duplicate MYHANDLE is not duplicated in leaderboard
+      expect(find.text('Duplicate Handle'), findsNothing);
+
+      // Check that You card does not have a remove button (only Bob should have 1 remove button)
+      expect(find.byIcon(Icons.close), findsOneWidget);
+    });
+
+    testWidgets(
+        'Sign Out flow on UserProfileScreen cancels safely and confirms correctly',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'user_to_sign_out',
+      });
+      final storageService = await LocalStorageService.create();
+      await storageService.savePrimaryProfile(const LeetCodeProfile(
+        username: 'user_to_sign_out',
+        totalSolved: 50,
+        easySolved: 30,
+        mediumSolved: 20,
+        hardSolved: 0,
+        streak: 2,
+        hasSolvedToday: false,
+        submissionCalendar: {},
+        topTopics: [],
+      ));
+      await storageService.saveTeammates([
+        const Teammate(
+          username: 'peer_preserved',
+          displayName: 'Peer Preserved',
+          isCurrentUser: false,
+        ),
+      ]);
+
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ChangeNotifierProvider<TeammateRepository>.value(
+            value: repo,
+            child: const UserProfileScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Find Sign Out in AppBar and in body
+      final appBarSignOut = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.widgetWithText(TextButton, 'Sign Out'),
+      );
+      expect(appBarSignOut, findsOneWidget);
+
+      // Tap Sign Out in AppBar to trigger confirmation dialog
+      await tester.tap(appBarSignOut);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign out of primary profile?'), findsOneWidget);
+      expect(
+          find.text(
+              'Are you sure you want to sign out of @user_to_sign_out? This returns LEETO to initial profile setup. Your saved teammate roster and study preferences will be preserved.'),
+          findsOneWidget);
+
+      // Test 1: Cancel dialog -> state preserved
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(repo.hasPrimaryProfile, isTrue);
+      expect(repo.primaryUsername, 'user_to_sign_out');
+      expect(await storageService.getPrimaryUsername(), 'user_to_sign_out');
+
+      // Test 2: Trigger dialog again and Confirm Sign Out
+      await tester.tap(appBarSignOut);
+      await tester.pumpAndSettle();
+
+      // Tap destructive Sign Out button inside dialog
+      final dialogSignOut = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextButton, 'Sign Out'),
+      );
+      await tester.tap(dialogSignOut);
+      await tester.pumpAndSettle();
+
+      // Primary profile state is cleared
+      expect(repo.hasPrimaryProfile, isFalse);
+      expect(repo.primaryUsername, isNull);
+      expect(await storageService.getPrimaryUsername(), isNull);
+      expect(await storageService.getPrimaryProfile(), isNull);
+
+      // Teammate roster remains preserved!
+      final preservedTeammates = await storageService.loadTeammates();
+      expect(preservedTeammates.any((t) => t.username == 'peer_preserved'),
+          isTrue);
+    });
+
+    testWidgets(
+        'Heatmap renders separated month groups with aligned month labels',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final storageService = await LocalStorageService.create();
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+
+      final now = DateTime.now();
+      final todayUtc = DateTime.utc(now.year, now.month, now.day);
+      final todaySec = todayUtc.millisecondsSinceEpoch ~/ 1000;
+
+      // Add submissions on today and 5 days ago
+      final calMap = <String, int>{
+        '$todaySec': 4,
+        '${todaySec - (5 * 86400)}': 2,
+      };
+
+      await storageService.saveTeammates([
+        Teammate(
+          username: 'janedoe',
+          displayName: 'Jane Doe',
+          profile: LeetCodeProfile(
+            username: 'janedoe',
+            totalSolved: 6,
+            easySolved: 4,
+            mediumSolved: 2,
+            hardSolved: 0,
+            streak: 1,
+            hasSolvedToday: true,
+            submissionCalendar: calMap,
+            topTopics: [],
+          ),
+        ),
+      ]);
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ChangeNotifierProvider<TeammateRepository>.value(
+            value: repo,
+            child: const TeammateDetailScreen(username: 'janedoe'),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Check summary stats
+      expect(find.text('submissions in the past one year'), findsOneWidget);
+      expect(find.text('Total active days: '), findsOneWidget);
+      expect(find.text('Max streak: '), findsOneWidget);
+
+      // Verify current month label is rendered
+      final currentMonthLabel = DateFormat('MMM').format(todayUtc);
+      expect(find.text(currentMonthLabel), findsOneWidget);
     });
   });
 }

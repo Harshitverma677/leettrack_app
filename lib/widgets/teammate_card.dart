@@ -119,22 +119,23 @@ class TeammateCard extends StatelessWidget {
                       ),
                     ),
 
-                    // Remove Button (✕)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.close,
-                        size: 18,
-                        color: AppColors.textMuted,
+                    // Remove Button (✕) - Only shown for peers, never for primary profile
+                    if (!teammate.isCurrentUser)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: AppColors.textMuted,
+                        ),
+                        splashRadius: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: 'Remove teammate',
+                        onPressed: onRemove,
                       ),
-                      splashRadius: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
-                      ),
-                      tooltip: 'Remove teammate',
-                      onPressed: onRemove,
-                    ),
                   ],
                 ),
 

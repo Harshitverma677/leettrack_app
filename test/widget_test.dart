@@ -6,9 +6,29 @@ import 'package:leeto/services/leetcode_graphql_service.dart';
 import 'package:leeto/services/local_storage_service.dart';
 
 void main() {
-  testWidgets('LeetoApp launches into dashboard with + Add Member action in header',
+  testWidgets('First launch requires primary profile setup',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    final storageService = await LocalStorageService.create();
+    final graphQLService = LeetCodeGraphQLService();
+
+    await tester.pumpWidget(LeetoApp(
+      storageService: storageService,
+      graphQLService: graphQLService,
+    ));
+
+    await tester.pumpAndSettle();
+
+    // On first launch without primary profile, prompt for setup
+    expect(find.text('Set up your LeetCode profile'), findsOneWidget);
+    expect(find.text('Verify & Continue'), findsOneWidget);
+  });
+
+  testWidgets('Subsequent launch opens directly into dashboard with + Add Member',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'leeto_primary_username': 'vuvcVjbwmU',
+    });
     final storageService = await LocalStorageService.create();
     final graphQLService = LeetCodeGraphQLService();
 

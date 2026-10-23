@@ -136,17 +136,9 @@ class _AddTeammateSheetState extends State<AddTeammateSheet> {
                 color: AppColors.textPrimary,
                 letterSpacing: -0.4,
               ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Sync real stats directly from LeetCode',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textMuted,
-              ),
-            ),
+            ),        
 
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
 
             // Error banner if any
             if (_errorMessage != null) ...[
@@ -199,7 +191,7 @@ class _AddTeammateSheetState extends State<AddTeammateSheet> {
               textCapitalization: TextCapitalization.none,
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
               decoration: const InputDecoration(
-                hintText: 'e.g. tour_list or neetcode',
+                hintText: 'username',
                 prefixIcon: Icon(
                   Icons.alternate_email,
                   size: 18,

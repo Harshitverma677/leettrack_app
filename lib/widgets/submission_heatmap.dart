@@ -8,6 +8,9 @@ class SubmissionHeatmap extends StatefulWidget {
   final int? totalSubmissions;
   final int? activeDays;
   final int? maxStreak;
+  final bool isLoading;
+  final bool isUnavailable;
+  final VoidCallback? onRetry;
 
   const SubmissionHeatmap({
     super.key,
@@ -15,6 +18,9 @@ class SubmissionHeatmap extends StatefulWidget {
     this.totalSubmissions,
     this.activeDays,
     this.maxStreak,
+    this.isLoading = false,
+    this.isUnavailable = false,
+    this.onRetry,
   });
 
   @override
@@ -23,6 +29,10 @@ class SubmissionHeatmap extends StatefulWidget {
 
 class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
   late final ScrollController _scrollController;
+
+  static const double _cellSize = 11.0;
+  static const double _cellSpacing = 3.0;
+  static const double _monthSpacing = 14.0; // Noticeably larger gap between months
 
   @override
   void initState() {
@@ -43,10 +53,74 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isLoading) {
+      return Container(
+        height: 180,
+        padding: const EdgeInsets.all(AppDimensions.paddingL),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2228),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          border: Border.all(
+            color: AppColors.cardBorder,
+            width: AppDimensions.cardBorderWidth,
+          ),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.primary,
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+
+    if (widget.isUnavailable) {
+      return Container(
+        padding: const EdgeInsets.all(AppDimensions.paddingL),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2228),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          border: Border.all(
+            color: AppColors.cardBorder,
+            width: AppDimensions.cardBorderWidth,
+          ),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.calendar_today_outlined,
+                size: 28, color: AppColors.textMuted),
+            const SizedBox(height: 8),
+            const Text(
+              'Submission calendar data unavailable',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Could not verify calendar from LeetCode public GraphQL response.',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+              textAlign: TextAlign.center,
+            ),
+            if (widget.onRetry != null) ...[
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: widget.onRetry,
+                icon: const Icon(Icons.refresh, size: 14),
+                label: const Text('Retry'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
     final now = DateTime.now();
     final today = DateTime.utc(now.year, now.month, now.day);
 
-    // Build map of YYYY-MM-DD -> solve count
+    // Build map of YYYY-MM-DD -> solve count from verified calendar data
     final solveCountsByDate = <String, int>{};
     widget.submissionCalendar.forEach((tsStr, cnt) {
       final ts = int.tryParse(tsStr) ?? 0;
@@ -58,20 +132,27 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
       }
     });
 
-    // 53 weeks (approximately past 12 months)
-    // Align so rows are Sun (0) to Sat (6)
-    final daysSinceSunday = today.weekday % 7; // Sunday = 0, Mon = 1, ...
-    final numWeeks = 53;
-    final endDate = today.add(Duration(days: 6 - daysSinceSunday));
-    final startDate = endDate.subtract(Duration(days: (numWeeks * 7) - 1));
+    // Build past 12 months data
+    final months = <_MonthData>[];
+    for (int i = 11; i >= 0; i--) {
+      int m = today.month - i;
+      int y = today.year;
+      while (m <= 0) {
+        m += 12;
+        y -= 1;
+      }
+      months.add(_buildMonthData(y, m, today, solveCountsByDate));
+    }
 
-    // Calculate metrics across past 365 days if not provided
+    // Calculate real stats across the displayed 12-month period
+    final firstDisplayedDate =
+        DateTime.utc(months.first.year, months.first.month, 1);
     int calculatedTotal = 0;
     int calculatedActive = 0;
     int calculatedMaxStreak = 0;
     int currentStreak = 0;
 
-    var iterDate = today.subtract(const Duration(days: 364));
+    var iterDate = firstDisplayedDate;
     while (!iterDate.isAfter(today)) {
       final ymd =
           '${iterDate.year}-${iterDate.month.toString().padLeft(2, '0')}-${iterDate.day.toString().padLeft(2, '0')}';
@@ -93,34 +174,10 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
     final displayActive = widget.activeDays ?? calculatedActive;
     final displayMaxStreak = widget.maxStreak ?? calculatedMaxStreak;
 
-    // Group weeks by month for LeetCode-style layout with bottom month labels
-    final monthGroups = <_MonthGroup>[];
-    _MonthGroup? currentGroup;
-
-    var weekStart = startDate;
-    for (int w = 0; w < numWeeks; w++) {
-      final weekDays = <DateTime>[];
-      for (int d = 0; d < 7; d++) {
-        weekDays.add(weekStart.add(Duration(days: d)));
-      }
-
-      // Middle day of the week to determine primary month
-      final midDay = weekDays[3];
-      final monthName = DateFormat('MMM').format(midDay);
-
-      if (currentGroup == null || currentGroup.monthName != monthName) {
-        currentGroup = _MonthGroup(monthName: monthName);
-        monthGroups.add(currentGroup);
-      }
-      currentGroup.weeks.add(weekDays);
-
-      weekStart = weekStart.add(const Duration(days: 7));
-    }
-
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingL),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1F2C),
+        color: const Color(0xFF1F2228),
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         border: Border.all(
           color: AppColors.cardBorder,
@@ -130,7 +187,7 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Summary Header (LeetCode exact style, wrapped for mobile responsiveness)
+          // LeetCode Summary Header
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             runSpacing: 8,
@@ -209,80 +266,20 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
 
           const SizedBox(height: 16),
 
-          // Horizontal scrollable contribution grid
+          // Horizontal scrollable real calendar grid with separated months
           SingleChildScrollView(
             controller: _scrollController,
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: monthGroups.map((group) {
+              children: months.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final month = entry.value;
+                final isLast = idx == months.length - 1;
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Week columns for this month
-                      Row(
-                        children: group.weeks.map((week) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 3.5),
-                            child: Column(
-                              children: week.map((date) {
-                                final isAfterToday = date.isAfter(today);
-                                final isBeforeStart = date.isBefore(today.subtract(const Duration(days: 365)));
-                                final ymd =
-                                    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                                final count = solveCountsByDate[ymd] ?? 0;
-
-                                if (isAfterToday || isBeforeStart) {
-                                  return const Padding(
-                                    padding: EdgeInsets.only(bottom: 3.5),
-                                    child: SizedBox(width: 10.5, height: 10.5),
-                                  );
-                                }
-
-                                final cellColor = _getCellColor(count);
-                                final dateLabel = DateFormat('MMM d').format(date);
-                                final tip = count > 0
-                                    ? '$dateLabel: $count submission${count > 1 ? "s" : ""}'
-                                    : '$dateLabel: No submissions';
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 3.5),
-                                  child: Tooltip(
-                                    message: tip,
-                                    waitDuration: const Duration(milliseconds: 300),
-                                    child: Container(
-                                      width: 10.5,
-                                      height: 10.5,
-                                      decoration: BoxDecoration(
-                                        color: cellColor,
-                                        borderRadius:
-                                            BorderRadius.circular(2.2),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Month label centered under its group
-                      Text(
-                        group.monthName,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+                  padding: EdgeInsets.only(right: isLast ? 0 : _monthSpacing),
+                  child: _buildMonthGroup(month),
                 );
               }).toList(),
             ),
@@ -292,18 +289,158 @@ class _SubmissionHeatmapState extends State<SubmissionHeatmap> {
     );
   }
 
+  _MonthData _buildMonthData(
+    int year,
+    int month,
+    DateTime today,
+    Map<String, int> solveCountsByDate,
+  ) {
+    final firstDay = DateTime.utc(year, month, 1);
+    final daysInMonth = DateTime.utc(year, month + 1, 0).day;
+    final isCurrentMonth = (year == today.year && month == today.month);
+    final lastDay = isCurrentMonth ? today.day : daysInMonth;
+
+    // Sunday-first weekday index: Sun = 0, Mon = 1, ..., Sat = 6
+    final startWeekday = firstDay.weekday % 7;
+    final numCols = ((startWeekday + lastDay + 6) ~/ 7);
+
+    final columns = <List<_CellData>>[];
+
+    for (int c = 0; c < numCols; c++) {
+      final colCells = <_CellData>[];
+      for (int r = 0; r < 7; r++) {
+        final dayNum = (c * 7) + r - startWeekday + 1;
+        if (dayNum >= 1 && dayNum <= lastDay) {
+          final date = DateTime.utc(year, month, dayNum);
+          final ymd =
+              '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          final count = solveCountsByDate[ymd] ?? 0;
+          colCells.add(_CellData(
+            date: date,
+            solveCount: count,
+            isPlaceholder: false,
+          ));
+        } else {
+          // Layout placeholder for weekdays outside this month or after today
+          colCells.add(const _CellData.placeholder());
+        }
+      }
+      columns.add(colCells);
+    }
+
+    final monthLabel = DateFormat('MMM').format(firstDay);
+
+    return _MonthData(
+      year: year,
+      month: month,
+      label: monthLabel,
+      columns: columns,
+    );
+  }
+
+  Widget _buildMonthGroup(_MonthData month) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Month's week columns
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: month.columns.map((col) {
+            return Padding(
+              padding: const EdgeInsets.only(right: _cellSpacing),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: col.map((cell) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: _cellSpacing),
+                    child: cell.isPlaceholder
+                        ? const SizedBox(
+                            width: _cellSize,
+                            height: _cellSize,
+                          )
+                        : _buildCell(cell),
+                  );
+                }).toList(),
+              ),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Month Label centered under this month's columns
+        Text(
+          month.label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.textMuted,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCell(_CellData cell) {
+    final count = cell.solveCount;
+    final date = cell.date!;
+    final dateLabel = DateFormat('EEE, MMM d, yyyy').format(date);
+    final tip = count > 0
+        ? '$dateLabel: $count solve${count > 1 ? "s" : ""}'
+        : '$dateLabel: No submissions';
+
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 250),
+      child: Container(
+        width: _cellSize,
+        height: _cellSize,
+        decoration: BoxDecoration(
+          color: _getCellColor(count),
+          borderRadius: BorderRadius.circular(2.2),
+        ),
+      ),
+    );
+  }
+
   Color _getCellColor(int count) {
-    if (count == 0) return const Color(0xFF333842); // Subdued dark grey
-    if (count <= 2) return const Color(0xFF185324); // Deep green
-    if (count <= 5) return const Color(0xFF237530); // Forest green
-    if (count <= 8) return const Color(0xFF158E32); // Vibrant green
-    return const Color(0xFF7FDF8A); // Light mint green
+    if (count == 0) return const Color(0xFF2D3139); // Subdued charcoal inactive cell
+    if (count <= 2) return const Color(0xFF185324); // Level 1 muted green
+    if (count <= 5) return const Color(0xFF237530); // Level 2 forest green
+    if (count <= 8) return const Color(0xFF158E32); // Level 3 emerald green
+    return const Color(0xFF7FDF8A); // Level 4 light mint green
   }
 }
 
-class _MonthGroup {
-  final String monthName;
-  final List<List<DateTime>> weeks = [];
+class _CellData {
+  final DateTime? date;
+  final int solveCount;
+  final bool isPlaceholder;
 
-  _MonthGroup({required this.monthName});
+  const _CellData({
+    required this.date,
+    required this.solveCount,
+    required this.isPlaceholder,
+  });
+
+  const _CellData.placeholder()
+      : date = null,
+        solveCount = 0,
+        isPlaceholder = true;
+}
+
+class _MonthData {
+  final int year;
+  final int month;
+  final String label;
+  final List<List<_CellData>> columns;
+
+  const _MonthData({
+    required this.year,
+    required this.month,
+    required this.label,
+    required this.columns,
+  });
 }

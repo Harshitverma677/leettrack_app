@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/leetcode_profile.dart';
-import '../models/teammate.dart';
 import '../repositories/teammate_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -11,7 +10,11 @@ import '../widgets/submission_heatmap.dart';
 class UserProfileScreen extends StatelessWidget {
   const UserProfileScreen({super.key});
 
-  void _confirmWipeTeammates(BuildContext context, TeammateRepository repo, Teammate currentUser) async {
+  void _confirmWipeTeammates(
+    BuildContext context,
+    TeammateRepository repo,
+    String primaryUsername,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -29,7 +32,7 @@ class UserProfileScreen extends StatelessWidget {
           ),
         ),
         content: Text(
-          'Are you sure you want to remove all saved teammate profiles from your local LEETO roster? Your own profile (@${currentUser.username}) will remain intact.',
+          'Are you sure you want to remove all saved teammate',
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontSize: 14,
@@ -65,7 +68,7 @@ class UserProfileScreen extends StatelessWidget {
           SnackBar(
             backgroundColor: AppColors.cardSurfaceElevated,
             content: Text(
-              'Removed $removed teammate profile${removed != 1 ? "s" : ""}. Your profile is preserved.',
+              'Removed $removed teammate profile${removed != 1 ? "s" : ""}',
               style: const TextStyle(color: AppColors.textPrimary),
             ),
           ),
@@ -74,12 +77,69 @@ class UserProfileScreen extends StatelessWidget {
     }
   }
 
+  void _confirmSignOut(
+    BuildContext context,
+    TeammateRepository repo,
+    String primaryUsername,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          side: const BorderSide(color: AppColors.cardBorder),
+        ),
+        title: const Text(
+          'Sign out of primary profile?',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to sign out of @$primaryUsername?',
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Sign Out',
+              style: TextStyle(
+                color: AppColors.hard,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      await repo.signOutPrimaryProfile();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.watch<TeammateRepository>();
-    final currentUser = repo.currentUserTeammate;
-    final profile = currentUser?.profile;
-    final otherCount = repo.otherTeammatesCount;
+    final primaryProfile = repo.primaryProfile;
+    final primaryUsername = repo.primaryUsername;
+    final teammateCount = repo.teammateCount;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -89,8 +149,27 @@ class UserProfileScreen extends StatelessWidget {
           icon: const Icon(Icons.chevron_left, color: AppColors.primary, size: 26),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          if (primaryUsername != null)
+            TextButton.icon(
+              onPressed: () => _confirmSignOut(context, repo, primaryUsername),
+              icon: const Icon(
+                Icons.logout_rounded,
+                size: 16,
+                color: AppColors.textMuted,
+              ),
+              label: const Text(
+                'Sign Out',
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
       ),
-      body: currentUser == null
+      body: primaryUsername == null
           ? _buildNoProfileState()
           : SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
@@ -101,33 +180,47 @@ class UserProfileScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Profile Header
-                  _buildHeader(currentUser),
+                  _buildHeader(primaryProfile, primaryUsername),
 
                   const SizedBox(height: 22),
 
                   // 2x2 Grid of Key Stats
-                  _buildStatsGrid(profile),
+                  _buildStatsGrid(primaryProfile),
 
                   const SizedBox(height: 20),
 
                   // Difficulty Breakdown 3 Cards
-                  _buildDifficultyBreakdown(profile),
+                  _buildDifficultyBreakdown(primaryProfile),
 
                   const SizedBox(height: 20),
 
-                  // LeetCode-style Contribution Heatmap
-                  if (profile != null)
+                  // Accurate LeetCode-style Contribution Heatmap
+                  if (primaryProfile != null)
                     SubmissionHeatmap(
-                      submissionCalendar: profile.submissionCalendar,
-                      totalSubmissions: profile.submissionsInPastOneYear,
-                      activeDays: profile.activeDaysInPastOneYear,
-                      maxStreak: profile.maxStreakInPastOneYear,
+                      submissionCalendar: primaryProfile.submissionCalendar,
+                      totalSubmissions: primaryProfile.submissionsInPastOneYear,
+                      activeDays: primaryProfile.activeDaysInPastOneYear,
+                      maxStreak: primaryProfile.maxStreakInPastOneYear,
                     ),
 
                   const SizedBox(height: 20),
 
                   // "Wipe teammate profiles" Section
-                  _buildWipeTeammatesSection(context, repo, currentUser, otherCount),
+                  _buildWipeTeammatesSection(
+                    context,
+                    repo,
+                    primaryUsername,
+                    teammateCount,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // "Sign Out" Section
+                  _buildSignOutSection(
+                    context,
+                    repo,
+                    primaryUsername,
+                  ),
 
                   const SizedBox(height: 40),
                 ],
@@ -159,7 +252,7 @@ class UserProfileScreen extends StatelessWidget {
             ),
             SizedBox(height: 8),
             Text(
-              'Add your LeetCode handle to the team roster to see your personal analytics.',
+              'Please set up your primary LeetCode profile.',
               style: TextStyle(
                 fontSize: 13,
                 color: AppColors.textMuted,
@@ -176,10 +269,10 @@ class UserProfileScreen extends StatelessWidget {
   Widget _buildWipeTeammatesSection(
     BuildContext context,
     TeammateRepository repo,
-    Teammate currentUser,
-    int otherCount,
+    String primaryUsername,
+    int teammateCount,
   ) {
-    final hasTeammates = otherCount > 0;
+    final hasTeammates = teammateCount > 0;
 
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingL),
@@ -216,7 +309,7 @@ class UserProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Removes all saved teammate profiles from the local LEETO roster. Your own profile (@${currentUser.username}) and stats are preserved.',
+            'Removes all saved teammate profiles',
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.textMuted,
@@ -226,7 +319,7 @@ class UserProfileScreen extends StatelessWidget {
           const SizedBox(height: 14),
           OutlinedButton.icon(
             onPressed: hasTeammates
-                ? () => _confirmWipeTeammates(context, repo, currentUser)
+                ? () => _confirmWipeTeammates(context, repo, primaryUsername)
                 : null,
             icon: Icon(
               Icons.delete_outline,
@@ -235,7 +328,7 @@ class UserProfileScreen extends StatelessWidget {
             ),
             label: Text(
               hasTeammates
-                  ? 'Wipe $otherCount Teammate Profile${otherCount != 1 ? "s" : ""}'
+                  ? 'Wipe $teammateCount Teammate Profile${teammateCount != 1 ? "s" : ""}'
                   : 'No teammate profiles to remove',
               style: TextStyle(
                 fontSize: 13,
@@ -261,27 +354,107 @@ class UserProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(Teammate user) {
+  Widget _buildSignOutSection(
+    BuildContext context,
+    TeammateRepository repo,
+    String primaryUsername,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.paddingL),
+      decoration: BoxDecoration(
+        color: AppColors.cardSurface,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        border: Border.all(
+          color: AppColors.cardBorder,
+          width: AppDimensions.cardBorderWidth,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.logout_rounded,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Sign Out',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Signs out of @$primaryUsername',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => _confirmSignOut(context, repo, primaryUsername),
+            icon: const Icon(
+              Icons.logout_rounded,
+              size: 16,
+              color: AppColors.textSecondary,
+            ),
+            label: const Text(
+              'Sign Out',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              side: const BorderSide(color: AppColors.cardBorder),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(LeetCodeProfile? profile, String username) {
+    final displayName = profile?.realName != null && profile!.realName!.trim().isNotEmpty
+        ? profile.realName!.trim()
+        : username;
+    final avatar = profile?.userAvatar;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             // Large Avatar
-            if (user.effectiveAvatar.isNotEmpty)
+            if (avatar != null && avatar.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.circular(34),
                 child: Image.network(
-                  user.effectiveAvatar,
+                  avatar,
                   width: 68,
                   height: 68,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) =>
-                      _buildInitials(user),
+                      _buildInitials(displayName),
                 ),
               )
             else
-              _buildInitials(user),
+              _buildInitials(displayName),
 
             const SizedBox(width: 16),
 
@@ -291,7 +464,7 @@ class UserProfileScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user.effectiveName,
+                    displayName,
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
@@ -301,7 +474,7 @@ class UserProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '@${user.username}',
+                    '@$username',
                     style: const TextStyle(
                       fontSize: 14,
                       color: AppColors.textMuted,
@@ -321,7 +494,7 @@ class UserProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       const Text(
-                        'Verified LeetCode Member',
+                        'Verified Primary LeetCode Member',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -339,10 +512,8 @@ class UserProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInitials(Teammate user) {
-    final initial = user.effectiveName.isNotEmpty
-        ? user.effectiveName[0].toUpperCase()
-        : 'U';
+  Widget _buildInitials(String name) {
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
     return Container(
       width: 68,
       height: 68,
@@ -374,7 +545,7 @@ class UserProfileScreen extends StatelessWidget {
                 label: 'CONTEST RATING',
                 value: profile?.contestRating != null
                     ? '${profile!.contestRating!.toInt()}'
-                    : '1452',
+                    : '—',
               ),
             ),
             const SizedBox(width: 12),
@@ -394,7 +565,7 @@ class UserProfileScreen extends StatelessWidget {
                 label: 'ACCURACY',
                 value: profile?.accuracy != null
                     ? '${profile!.accuracy!.toStringAsFixed(1)}%'
-                    : '75.7%',
+                    : '—',
               ),
             ),
             const SizedBox(width: 12),

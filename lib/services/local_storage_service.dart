@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/leetcode_profile.dart';
 import '../models/teammate.dart';
 
 class LocalStorageService {
+  static const String _keyPrimaryUsername = 'leeto_primary_username';
+  static const String _keyPrimaryProfile = 'leeto_primary_profile';
   static const String _keyTeammates = 'leeto_teammates_roster';
-  static const String _keyCurrentUser = 'leeto_current_user_handle';
   static const String _keyDailyGoal = 'leeto_daily_goal';
   static const String _keyRemindersEnabled = 'leeto_reminders_enabled';
 
@@ -17,7 +19,39 @@ class LocalStorageService {
     return LocalStorageService(prefs);
   }
 
-  /// Load teammates from disk, or initialize default showcase roster on first launch
+  // --- Primary Profile (User's own LeetCode handle and profile) ---
+
+  Future<String?> getPrimaryUsername() async {
+    return _prefs.getString(_keyPrimaryUsername);
+  }
+
+  Future<void> savePrimaryUsername(String username) async {
+    await _prefs.setString(_keyPrimaryUsername, username.trim());
+  }
+
+  Future<LeetCodeProfile?> getPrimaryProfile() async {
+    final raw = _prefs.getString(_keyPrimaryProfile);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = json.decode(raw) as Map<String, dynamic>;
+        return LeetCodeProfile.fromJson(decoded);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> savePrimaryProfile(LeetCodeProfile profile) async {
+    await _prefs.setString(_keyPrimaryProfile, json.encode(profile.toJson()));
+  }
+
+  /// Clear only the saved primary LeetCode username and cached primary profile
+  Future<void> clearPrimaryProfile() async {
+    await _prefs.remove(_keyPrimaryUsername);
+    await _prefs.remove(_keyPrimaryProfile);
+  }
+
+  // --- Teammate Roster (Separate from Primary Profile) ---
+
   Future<List<Teammate>> loadTeammates() async {
     final raw = _prefs.getString(_keyTeammates);
     if (raw != null && raw.isNotEmpty) {
@@ -30,14 +64,8 @@ class LocalStorageService {
       } catch (_) {}
     }
 
-    // Default showcase roster
-    final currentUserHandle = await getCurrentUserHandle() ?? 'vuvcVjbwmU';
+    // Default showcase teammates (only peers, no primary user)
     final initialRoster = [
-      Teammate(
-        username: 'vuvcVjbwmU',
-        displayName: 'Harshit Verma',
-        isCurrentUser: currentUserHandle.toLowerCase() == 'vuvcvjbwmu',
-      ),
       const Teammate(
         username: '_palakdeep',
         displayName: 'Palakdeep',
@@ -54,22 +82,18 @@ class LocalStorageService {
     return initialRoster;
   }
 
-  /// Save full roster to persistent storage
   Future<void> saveTeammates(List<Teammate> teammates) async {
     final jsonList = teammates.map((t) => t.toJson()).toList();
     await _prefs.setString(_keyTeammates, json.encode(jsonList));
   }
 
-  /// Current user's LeetCode handle
-  Future<String?> getCurrentUserHandle() async {
-    return _prefs.getString(_keyCurrentUser) ?? 'vuvcVjbwmU';
+  /// Wipe teammate records only, strictly preserving primary profile and preferences
+  Future<void> clearTeammates() async {
+    await _prefs.remove(_keyTeammates);
   }
 
-  Future<void> setCurrentUserHandle(String handle) async {
-    await _prefs.setString(_keyCurrentUser, handle.trim());
-  }
+  // --- Study Goals & Reminders ---
 
-  /// Daily study goal
   Future<int> getDailyGoal() async {
     return _prefs.getInt(_keyDailyGoal) ?? 2;
   }
@@ -78,7 +102,6 @@ class LocalStorageService {
     await _prefs.setInt(_keyDailyGoal, goal);
   }
 
-  /// Daily practice reminders
   Future<bool> getRemindersEnabled() async {
     return _prefs.getBool(_keyRemindersEnabled) ?? false;
   }
@@ -87,11 +110,8 @@ class LocalStorageService {
     await _prefs.setBool(_keyRemindersEnabled, enabled);
   }
 
-  /// Reset all stored data
+  /// Full reset if needed
   Future<void> clearAll() async {
-    await _prefs.remove(_keyTeammates);
-    await _prefs.remove(_keyCurrentUser);
-    await _prefs.remove(_keyDailyGoal);
-    await _prefs.remove(_keyRemindersEnabled);
+    await _prefs.clear();
   }
 }
