@@ -140,7 +140,7 @@ class LeetCodeGraphQLService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        return [];
+        throw Exception('HTTP error ${response.statusCode}: ${response.reasonPhrase}');
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
@@ -163,9 +163,9 @@ class LeetCodeGraphQLService {
       }
 
       return submissions;
-    } catch (_) {
-      // If recent submissions fail or are private, return empty rather than failing the whole flow
-      return [];
+    } catch (e) {
+      // Re-throw so callers don't overwrite cached data on network failure
+      rethrow;
     }
   }
 

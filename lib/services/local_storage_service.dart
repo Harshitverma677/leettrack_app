@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/leetcode_profile.dart';
+import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
 
 class LocalStorageService {
   static const String _keyPrimaryUsername = 'leeto_primary_username';
   static const String _keyPrimaryProfile = 'leeto_primary_profile';
+  static const String _keyPrimarySubmissions = 'leeto_primary_submissions';
   static const String _keyTeammates = 'leeto_teammates_roster';
   static const String _keyDailyGoal = 'leeto_daily_goal';
   static const String _keyRemindersEnabled = 'leeto_reminders_enabled';
@@ -44,10 +46,31 @@ class LocalStorageService {
     await _prefs.setString(_keyPrimaryProfile, json.encode(profile.toJson()));
   }
 
+  Future<List<LeetCodeSubmission>> getPrimarySubmissions() async {
+    final raw = _prefs.getString(_keyPrimarySubmissions);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = json.decode(raw) as List<dynamic>;
+        return decoded
+            .whereType<Map<String, dynamic>>()
+            .map((e) => LeetCodeSubmission.fromJson(e))
+            .toList();
+      } catch (_) {}
+    }
+    return [];
+  }
+
+  Future<void> savePrimarySubmissions(
+      List<LeetCodeSubmission> submissions) async {
+    final jsonList = submissions.map((s) => s.toJson()).toList();
+    await _prefs.setString(_keyPrimarySubmissions, json.encode(jsonList));
+  }
+
   /// Clear only the saved primary LeetCode username and cached primary profile
   Future<void> clearPrimaryProfile() async {
     await _prefs.remove(_keyPrimaryUsername);
     await _prefs.remove(_keyPrimaryProfile);
+    await _prefs.remove(_keyPrimarySubmissions);
   }
 
   // --- Teammate Roster (Separate from Primary Profile) ---

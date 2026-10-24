@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/daily_challenge.dart';
 import '../models/leetcode_profile.dart';
+import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
 import '../services/leetcode_graphql_service.dart';
 import '../services/local_storage_service.dart';
@@ -18,6 +19,7 @@ class TeammateRepository extends ChangeNotifier {
 
   String? _primaryUsername;
   LeetCodeProfile? _primaryProfile;
+  List<LeetCodeSubmission> _primarySubmissions = [];
   List<Teammate> _teammates = [];
   DailyChallenge? _dailyChallenge;
   bool _isInitialized = false;
@@ -40,6 +42,8 @@ class TeammateRepository extends ChangeNotifier {
   String? get primaryUsername => _primaryUsername;
   String get currentUserHandle => _primaryUsername ?? '';
   LeetCodeProfile? get primaryProfile => _primaryProfile;
+  List<LeetCodeSubmission> get primarySubmissions =>
+      List.unmodifiable(_primarySubmissions);
 
   List<Teammate> get rawTeammates => List.unmodifiable(_teammates);
   int get teammateCount => _teammates.length;
@@ -59,7 +63,7 @@ class TeammateRepository extends ChangeNotifier {
       displayName: _primaryProfile?.realName ?? _primaryUsername!,
       avatarUrl: _primaryProfile?.userAvatar,
       profile: _primaryProfile,
-      recentSubmissions: const [],
+      recentSubmissions: _primarySubmissions,
       isCurrentUser: true,
     );
   }
@@ -155,6 +159,7 @@ class TeammateRepository extends ChangeNotifier {
     try {
       _primaryUsername = await storageService.getPrimaryUsername();
       _primaryProfile = await storageService.getPrimaryProfile();
+      _primarySubmissions = await storageService.getPrimarySubmissions();
       _dailyGoal = await storageService.getDailyGoal();
       _teammates = await storageService.loadTeammates();
 
@@ -194,12 +199,18 @@ class TeammateRepository extends ChangeNotifier {
     try {
       // Query LeetCode GraphQL to verify profile exists
       final profile = await graphQLService.fetchUserProfile(trimmed);
+      List<LeetCodeSubmission> submissions = [];
+      try {
+        submissions = await graphQLService.fetchRecentSubmissions(trimmed);
+      } catch (_) {}
 
       _primaryUsername = profile.username.isNotEmpty ? profile.username : trimmed;
       _primaryProfile = profile;
+      _primarySubmissions = submissions;
 
       await storageService.savePrimaryUsername(_primaryUsername!);
       await storageService.savePrimaryProfile(profile);
+      await storageService.savePrimarySubmissions(submissions);
 
       // Ensure primary user is not in teammates
       _teammates.removeWhere((t) => t.username.toLowerCase() == _primaryUsername!.toLowerCase());
@@ -241,6 +252,12 @@ class TeammateRepository extends ChangeNotifier {
           _primaryProfile = updatedPrimary;
           await storageService.savePrimaryProfile(updatedPrimary);
         } catch (_) {}
+        try {
+          final updatedSubs =
+              await graphQLService.fetchRecentSubmissions(_primaryUsername!);
+          _primarySubmissions = updatedSubs;
+          await storageService.savePrimarySubmissions(updatedSubs);
+        } catch (_) {}
       }
 
       // 3. Fetch all teammates concurrently with individual timeout tolerance
@@ -269,10 +286,28 @@ class TeammateRepository extends ChangeNotifier {
     }
   }
 
-  /// Refresh a single teammate
+  /// Refresh a single member (peer teammate or primary profile)
   Future<Teammate> refreshTeammate(String username) async {
+    final lower = username.toLowerCase();
+    if (_primaryUsername != null && _primaryUsername!.toLowerCase() == lower) {
+      final updatedPrimary =
+          await graphQLService.fetchUserProfile(_primaryUsername!);
+      _primaryProfile = updatedPrimary;
+      await storageService.savePrimaryProfile(updatedPrimary);
+
+      try {
+        final updatedSubs =
+            await graphQLService.fetchRecentSubmissions(_primaryUsername!);
+        _primarySubmissions = updatedSubs;
+        await storageService.savePrimarySubmissions(updatedSubs);
+      } catch (_) {}
+
+      notifyListeners();
+      return primaryTeammate!;
+    }
+
     final idx = _teammates.indexWhere(
-      (t) => t.username.toLowerCase() == username.toLowerCase(),
+      (t) => t.username.toLowerCase() == lower,
     );
     if (idx == -1) {
       throw Exception('Teammate not found');
@@ -359,6 +394,7 @@ class TeammateRepository extends ChangeNotifier {
   Future<void> signOutPrimaryProfile() async {
     _primaryUsername = null;
     _primaryProfile = null;
+    _primarySubmissions = [];
     await storageService.clearPrimaryProfile();
     notifyListeners();
   }
@@ -380,6 +416,7 @@ class TeammateRepository extends ChangeNotifier {
     await storageService.clearAll();
     _primaryUsername = null;
     _primaryProfile = null;
+    _primarySubmissions.clear();
     _teammates.clear();
     await initialize();
   }

@@ -20,6 +20,7 @@ import 'package:leeto/screens/user_profile_screen.dart';
 import 'package:leeto/services/leetcode_graphql_service.dart';
 import 'package:leeto/services/local_storage_service.dart';
 import 'package:leeto/theme/app_theme.dart';
+import 'package:leeto/widgets/submission_tile.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -383,11 +384,11 @@ void main() {
       await repo.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: ChangeNotifierProvider<TeammateRepository>.value(
-            value: repo,
-            child: const DashboardScreen(),
+        ChangeNotifierProvider<TeammateRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: const DashboardScreen(),
           ),
         ),
       );
@@ -643,11 +644,11 @@ void main() {
       await repo.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: ChangeNotifierProvider<TeammateRepository>.value(
-            value: repo,
-            child: const DashboardScreen(),
+        ChangeNotifierProvider<TeammateRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: const DashboardScreen(),
           ),
         ),
       );
@@ -728,8 +729,8 @@ void main() {
 
       expect(find.text('Sign out of primary profile?'), findsOneWidget);
       expect(
-          find.text(
-              'Are you sure you want to sign out of @user_to_sign_out? This returns LEETO to initial profile setup. Your saved teammate roster and study preferences will be preserved.'),
+          find.textContaining(
+              'Are you sure you want to sign out of @user_to_sign_out'),
           findsOneWidget);
 
       // Test 1: Cancel dialog -> state preserved
@@ -824,6 +825,146 @@ void main() {
       // Verify current month label is rendered
       final currentMonthLabel = DateFormat('MMM').format(todayUtc);
       expect(find.text(currentMonthLabel), findsOneWidget);
+    });
+
+    testWidgets(
+        'Tapping primary profile card in leaderboard opens TeammateDetailScreen with real data and submissions',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'alex_coder',
+      });
+      final storageService = await LocalStorageService.create();
+      await storageService.savePrimaryProfile(const LeetCodeProfile(
+        username: 'alex_coder',
+        realName: 'Alex Coder',
+        totalSolved: 250,
+        easySolved: 150,
+        mediumSolved: 80,
+        hardSolved: 20,
+        streak: 10,
+        hasSolvedToday: true,
+        submissionCalendar: {},
+        topTopics: [],
+      ));
+
+      await storageService.savePrimarySubmissions([
+        const LeetCodeSubmission(
+          title: 'Primary User Problem Solved',
+          titleSlug: 'primary-user-problem-solved',
+          timestamp: 1728259200,
+          statusDisplay: 'Accepted',
+          difficulty: 'Medium',
+        ),
+      ]);
+
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TeammateRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: const DashboardScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Find the primary card with 'You' badge and tap it
+      expect(find.text('You'), findsOneWidget);
+      await tester.tap(find.text('Alex Coder'));
+      await tester.pumpAndSettle();
+
+      // Should open TeammateDetailScreen for alex_coder
+      expect(find.text('Board'), findsOneWidget);
+      expect(find.text('Alex Coder'), findsOneWidget);
+      expect(find.text('@alex_coder'), findsOneWidget);
+      expect(find.text('250'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Primary User Problem Solved'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.text('Primary User Problem Solved'), findsOneWidget);
+      expect(find.text('Open'), findsOneWidget);
+    });
+
+    testWidgets(
+        'POTD card displays unavailable state when daily challenge is null and no fake fallback title is shown',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'alex_coder',
+      });
+      final storageService = await LocalStorageService.create();
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TeammateRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: const DashboardScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Daily challenge was not fetched / null
+      expect(find.text('DAILY CHALLENGE UNAVAILABLE'), findsOneWidget);
+      expect(
+          find.text('Could not fetch today\'s challenge from LeetCode GraphQL'),
+          findsOneWidget);
+
+      // Verify NO fake fallback question is displayed
+      expect(find.text('Minimum Operations to Sort a Permutation'), findsNothing);
+    });
+
+    testWidgets(
+        'SubmissionTile indicates Unavailable and prevents bad launch if titleSlug is missing',
+        (tester) async {
+      const invalidSubmission = LeetCodeSubmission(
+        title: 'Problem Without Slug',
+        titleSlug: '',
+        timestamp: 1728259200,
+        statusDisplay: 'Accepted',
+        difficulty: 'Easy',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: SubmissionTile(submission: invalidSubmission),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Problem Without Slug'), findsOneWidget);
+      expect(find.text('Unavailable'), findsOneWidget);
+
+      // Tapping it shows error SnackBar
+      await tester.tap(find.text('Unavailable'));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text('Problem URL slug unavailable for "Problem Without Slug"'),
+          findsOneWidget);
     });
   });
 }

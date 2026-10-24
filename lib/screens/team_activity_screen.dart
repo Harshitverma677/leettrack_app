@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
 import '../repositories/teammate_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../utils/url_launcher_helper.dart';
 import '../widgets/empty_state.dart';
 
 class TeamActivityScreen extends StatelessWidget {
   const TeamActivityScreen({super.key});
 
-  Future<void> _openProblem(BuildContext context, String url) async {
-    final uri = Uri.parse(url);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
+  Future<void> _openProblem(
+    BuildContext context,
+    String? titleSlug, {
+    String? title,
+  }) async {
+    await UrlLauncherHelper.openProblemBySlug(
+      context,
+      titleSlug,
+      title: title,
+    );
   }
 
   @override
@@ -425,7 +428,11 @@ class TeamActivityScreen extends StatelessWidget {
 
               // "Open" action
               TextButton(
-                onPressed: () => _openProblem(context, sub.problemUrl),
+                onPressed: () => _openProblem(
+                  context,
+                  sub.titleSlug,
+                  title: sub.title,
+                ),
                 style: TextButton.styleFrom(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 2),

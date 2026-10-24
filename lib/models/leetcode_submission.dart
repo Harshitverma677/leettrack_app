@@ -15,7 +15,13 @@ class LeetCodeSubmission {
     this.difficulty,
   });
 
-  String get problemUrl => 'https://leetcode.com/problems/$titleSlug/';
+  bool get hasValidUrl => titleSlug.trim().isNotEmpty;
+
+  String get problemUrl {
+    final slug = titleSlug.trim();
+    if (slug.isEmpty) return '';
+    return 'https://leetcode.com/problems/$slug/';
+  }
 
   DateTime get dateTime =>
       DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);

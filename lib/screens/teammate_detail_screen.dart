@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/leetcode_profile.dart';
 import '../models/teammate.dart';
 import '../repositories/teammate_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../utils/url_launcher_helper.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_state.dart';
 import '../widgets/stat_card.dart';
@@ -41,12 +41,8 @@ class _TeammateDetailScreenState extends State<TeammateDetailScreen> {
   }
 
   Future<void> _openLeetCodeProfile(String username) async {
-    final uri = Uri.parse('https://leetcode.com/$username/');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
+    final url = 'https://leetcode.com/$username/';
+    await UrlLauncherHelper.openLeetCodeUrl(context, url);
   }
 
   @override
@@ -222,14 +218,43 @@ class _TeammateDetailScreenState extends State<TeammateDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    teammate.effectiveName,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.4,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          teammate.effectiveName,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.4,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (teammate.isCurrentUser) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1D2845),
+                            borderRadius:
+                                BorderRadius.circular(AppDimensions.radiusPill),
+                            border: Border.all(color: const Color(0xFF2E4070)),
+                          ),
+                          child: const Text(
+                            'You',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF60A5FA),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(

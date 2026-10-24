@@ -15,6 +15,24 @@ class DailyChallenge {
     required this.link,
   });
 
+  bool get isValid =>
+      title.trim().isNotEmpty &&
+      (link.trim().isNotEmpty || titleSlug.trim().isNotEmpty);
+
+  String get fullProblemUrl {
+    final trimmedLink = link.trim();
+    if (trimmedLink.isNotEmpty) {
+      return trimmedLink.startsWith('http')
+          ? trimmedLink
+          : 'https://leetcode.com$trimmedLink';
+    }
+    final slug = titleSlug.trim();
+    if (slug.isNotEmpty) {
+      return 'https://leetcode.com/problems/$slug/';
+    }
+    return '';
+  }
+
   factory DailyChallenge.fromJson(Map<String, dynamic> json) {
     final active = json['activeDailyCodingChallengeQuestion'];
     if (active == null) {
@@ -22,10 +40,10 @@ class DailyChallenge {
     }
 
     final date = active['date']?.toString() ?? '';
-    final link = active['link']?.toString() ?? '';
+    final rawLink = active['link']?.toString() ?? '';
     final q = active['question'] as Map<String, dynamic>? ?? {};
 
-    final title = q['title']?.toString() ?? 'Daily Challenge';
+    final title = q['title']?.toString() ?? '';
     final titleSlug = q['titleSlug']?.toString() ?? '';
     final difficulty = q['difficulty']?.toString() ?? 'Medium';
 
@@ -36,13 +54,22 @@ class DailyChallenge {
       topic = firstTopic?['name']?.toString() ?? 'Algorithms';
     }
 
+    String computedLink = '';
+    if (rawLink.isNotEmpty) {
+      computedLink = rawLink.startsWith('http')
+          ? rawLink
+          : 'https://leetcode.com$rawLink';
+    } else if (titleSlug.isNotEmpty) {
+      computedLink = 'https://leetcode.com/problems/$titleSlug/';
+    }
+
     return DailyChallenge(
       date: date,
       title: title,
       titleSlug: titleSlug,
       difficulty: difficulty,
       topic: topic,
-      link: link.startsWith('http') ? link : 'https://leetcode.com$link',
+      link: computedLink,
     );
   }
 

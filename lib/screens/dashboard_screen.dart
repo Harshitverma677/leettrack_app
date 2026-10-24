@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/daily_challenge.dart';
 import '../models/teammate.dart';
 import '../repositories/teammate_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../utils/url_launcher_helper.dart';
 import '../widgets/add_teammate_sheet.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/filter_chip.dart';
@@ -52,13 +52,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openDailyChallenge(DailyChallenge? challenge) async {
-    if (challenge == null || challenge.link.isEmpty) return;
-    final uri = Uri.parse(challenge.link);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (challenge == null || !challenge.isValid) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Today\'s Daily Challenge link is currently unavailable'),
+          ),
+        );
       }
-    } catch (_) {}
+      return;
+    }
+    await UrlLauncherHelper.openLeetCodeUrl(
+      context,
+      challenge.fullProblemUrl,
+      fallbackTitle: challenge.title,
+    );
   }
 
   @override
@@ -341,21 +349,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           rank: index + 1,
                           teammate: teammate,
                           onTap: () {
-                            if (teammate.isCurrentUser) {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const UserProfileScreen(),
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => TeammateDetailScreen(
+                                  username: teammate.username,
                                 ),
-                              );
-                            } else {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TeammateDetailScreen(
-                                    username: teammate.username,
-                                  ),
-                                ),
-                              );
-                            }
+                              ),
+                            );
                           },
                           onRemove: () => _onRemoveTeammate(teammate),
                         );
@@ -377,16 +377,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDailyChallengeCard(DailyChallenge? daily) {
-    final title = daily?.title ?? 'Minimum Operations to Sort a Permutation';
-    final difficulty = daily?.difficulty ?? 'Medium';
-    final topic = daily?.topic ?? 'Array';
+    if (daily == null || !daily.isValid) {
+      return Container(
+        padding: const EdgeInsets.all(AppDimensions.paddingL),
+        decoration: BoxDecoration(
+          color: AppColors.cardSurface,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          border: Border.all(
+            color: AppColors.cardBorder,
+            width: AppDimensions.cardBorderWidth,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: const BoxDecoration(
+                color: AppColors.cardSurfaceElevated,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.bolt_outlined,
+                size: 20,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DAILY CHALLENGE UNAVAILABLE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Could not fetch today\'s challenge from LeetCode GraphQL',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 18, color: AppColors.primary),
+              tooltip: 'Retry daily challenge',
+              onPressed: () => context.read<TeammateRepository>().refreshAll(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final title = daily.title;
+    final difficulty = daily.difficulty;
+    final topic = daily.topic;
 
     Color diffColor = AppColors.medium;
     if (difficulty.toLowerCase() == 'easy') diffColor = AppColors.easy;
     if (difficulty.toLowerCase() == 'hard') diffColor = AppColors.hard;
 
     return Container(
-      padding: const EdgeInsets.all(AppDimensions.paddingL),
       decoration: BoxDecoration(
         color: AppColors.dailyChallengeBg,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
@@ -395,119 +454,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
           width: 1.2,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Challenge Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(
-                    Icons.bolt,
-                    size: 16,
-                    color: AppColors.primary,
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    'DAILY CHALLENGE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      color: AppColors.primary,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          onTap: () => _openDailyChallenge(daily),
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimensions.paddingL),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Challenge Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.bolt,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'DAILY CHALLENGE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: diffColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
-                  border: Border.all(color: diffColor.withValues(alpha: 0.5)),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: diffColor.withValues(alpha: 0.2),
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusPill),
+                        border:
+                            Border.all(color: diffColor.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        difficulty,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: diffColor,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  difficulty,
-                  style: TextStyle(
-                    fontSize: 11,
+
+                const SizedBox(height: 10),
+
+                // Problem Title
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: diffColor,
+                    color: AppColors.textPrimary,
+                    height: 1.2,
                   ),
                 ),
-              ),
-            ],
-          ),
 
-          const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
-          // Problem Title
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-              height: 1.2,
+                // Bottom Topic & Solve Now Action
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.dailyChallengeTag,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            topic,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primaryLight,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Source: LeetCode Official GraphQL',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '→ Solve Now',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-
-          const SizedBox(height: 12),
-
-          // Bottom Topic & Solve Now Action
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.dailyChallengeTag,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      topic,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.primaryLight,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Source: LeetCode Official GraphQL',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _openDailyChallenge(daily),
-                  borderRadius: BorderRadius.circular(4),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    child: Text(
-                      '→ Solve Now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
