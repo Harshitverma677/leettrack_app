@@ -7,6 +7,7 @@ import '../theme/app_dimensions.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/submission_heatmap.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/notification_service.dart';
 
 class UserProfileScreen extends StatelessWidget {
   const UserProfileScreen({super.key});
@@ -108,6 +109,9 @@ Future<void> _confirmSignOut(
   if (confirmed != true || !context.mounted) return;
 
   try {
+    // Remove this device's FCM token while the user is still authenticated.
+    await NotificationService.instance.stopForSignOut();
+
     // Return to the root route before signing out.
     Navigator.of(context).popUntil((route) => route.isFirst);
 
