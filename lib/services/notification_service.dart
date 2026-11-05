@@ -66,11 +66,32 @@ class NotificationService {
   }
 
   Future<void> _saveToken(String uid, String token) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      // Auth state can arrive just before the sign-up flow finishes creating
+      // users/{uid}. Wait for that owner document rather than attempting a
+      // create that would fail the Firestore rule requiring a matching uid.
+      var userExists = false;
+      for (var attempt = 0; attempt < 10; attempt++) {
+        final snapshot = await userRef.get();
+        if (snapshot.exists) {
+          userExists = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+
+      if (!userExists) {
+        debugPrint('LEETO: users/$uid is not ready; FCM token was not saved.');
+        return;
+      }
+
+      await userRef.update({
         'fcmTokens': FieldValue.arrayUnion([token]),
         'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
+      debugPrint('LEETO: FCM token saved for user $uid.');
     } catch (error) {
       debugPrint('LEETO could not save the FCM token: $error');
     }
@@ -87,10 +108,10 @@ class NotificationService {
       try {
         final token = await _messaging.getToken();
         if (token != null && token.isNotEmpty) {
-          await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          await FirebaseFirestore.instance.collection('users').doc(uid).update({
             'fcmTokens': FieldValue.arrayRemove([token]),
             'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          });
         }
       } catch (error) {
         debugPrint('LEETO could not remove the signed-out device token: $error');
