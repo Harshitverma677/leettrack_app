@@ -68,7 +68,7 @@ Required backend variables include:
 - `MAX_SUBMISSION_LOOKBACK`
 - `NODE_ENV`
 
-Use `backend/leeto-push-notifications/.env.example` as the local configuration reference.
+Use `eeto-push-notifications/.env.example` as the local configuration reference.
 
 ## Run Locally
 
@@ -84,10 +84,10 @@ flutter run
 
 ### Backend
 
-Run from the backend directory:
+Run from the backend repo by cloning it :
 
 ```bash
-cd backend/leeto-push-notifications
+cd eeto-push-notifications
 npm install
 cp .env.example .env
 ```
@@ -105,7 +105,6 @@ Health check: `GET http://localhost:3000/health`
 ## Deployment
 
 - Deploy the backend directory as a Render Web Service.
-- Set the Render Root Directory to `backend/leeto-push-notifications`.
 - Build command: `npm install --include=dev && npm run build`
 - Start command: `npm start`
 - Configure secrets as Render environment variables.
