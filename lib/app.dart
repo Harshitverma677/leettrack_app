@@ -9,6 +9,7 @@ import 'screens/primary_profile_setup_screen.dart';
 import 'services/firestore_service.dart';
 import 'services/leetcode_graphql_service.dart';
 import 'services/local_storage_service.dart';
+import 'services/notification_service.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
@@ -107,10 +108,20 @@ class _AuthRouterState extends State<AuthRouter> {
   }
 
   void _syncUser() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+
+      final uid = widget.user?.uid;
       final repo = context.read<TeammateRepository>();
-      repo.bindUser(widget.user?.uid);
+      await repo.bindUser(uid);
+
+      if (!mounted) return;
+      if (uid == null) {
+        await NotificationService.instance.stopForSignOut();
+      } else {
+        // FCM registration is independent of LeetCode profile setup.
+        await NotificationService.instance.initializeForUser(uid);
+      }
     });
   }
 
@@ -122,7 +133,6 @@ class _AuthRouterState extends State<AuthRouter> {
 
     final repo = context.watch<TeammateRepository>();
 
-    // Wait until repository is bound to the current user and loaded
     if (repo.currentUserId != widget.user!.uid ||
         !repo.isInitialized ||
         repo.isLoading) {
