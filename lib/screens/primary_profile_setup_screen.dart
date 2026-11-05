@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../repositories/teammate_repository.dart';
+import '../services/notification_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 
@@ -243,6 +244,7 @@ class _PrimaryProfileSetupScreenState extends State<PrimaryProfileSetupScreen> {
                   onPressed: _isLoading
                       ? null
                       : () async {
+                          await NotificationService.instance.stopForSignOut();
                           await FirebaseAuth.instance.signOut();
                         },
                   child: const Text(
