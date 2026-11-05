@@ -127,7 +127,6 @@ class FirestoreService {
     final docRef = _membersRef(uid).doc(normalized);
 
     try {
-      // Check for duplicate in Firestore
       final existingDoc = await docRef.get();
       if (existingDoc.exists) {
         throw Exception('Teammate @$displayUsername is already on your leaderboard');
