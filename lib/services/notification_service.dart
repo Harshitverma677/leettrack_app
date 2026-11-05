@@ -77,8 +77,26 @@ class NotificationService {
   }
 
   Future<void> stopForSignOut() async {
+    final uid = _activeUid;
     await _tokenRefreshSubscription?.cancel();
     _tokenRefreshSubscription = null;
+
+    // Remove this device from the previous account before another account
+    // can sign in on the same device.
+    if (uid != null) {
+      try {
+        final token = await _messaging.getToken();
+        if (token != null && token.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'fcmTokens': FieldValue.arrayRemove([token]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      } catch (error) {
+        debugPrint('LEETO could not remove the signed-out device token: $error');
+      }
+    }
+
     _activeUid = null;
   }
 }
