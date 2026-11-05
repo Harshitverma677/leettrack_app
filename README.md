@@ -16,8 +16,9 @@ A Flutter-based LeetCode team-tracking app with teammate activity, progress insi
 ```text
 leettrack/
 ├── leettrack-main/
-│   └── Flutter application
-└── backend/
+    └── Flutter application
+
+ backend/
     └── leeto-push-notifications/
         └── Node.js / TypeScript notification service
 ```
