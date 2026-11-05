@@ -233,6 +233,18 @@ void main() {
 
     test('Loads initial teammates roster and filters by search query',
         () async {
+      await storageService.saveTeammates([
+        const Teammate(
+          username: '_palakdeep',
+          displayName: 'Palakdeep',
+          isCurrentUser: false,
+        ),
+        const Teammate(
+          username: 'janhavi0411',
+          displayName: 'janhavi',
+          isCurrentUser: false,
+        ),
+      ]);
       await repo.initialize();
       expect(repo.rawTeammates.length, 2);
 
@@ -247,6 +259,10 @@ void main() {
     test('wipeTeammates removes all teammates and preserves primary profile',
         () async {
       await storageService.savePrimaryUsername('vuvcVjbwmU');
+      await storageService.saveTeammates([
+        const Teammate(username: '_palakdeep', isCurrentUser: false),
+        const Teammate(username: 'janhavi0411', isCurrentUser: false),
+      ]);
       await repo.initialize();
       expect(repo.primaryUsername, 'vuvcVjbwmU');
       expect(repo.rawTeammates.length, 2);
@@ -260,6 +276,9 @@ void main() {
     });
 
     test('Rejects duplicate teammates and empty usernames', () async {
+      await storageService.saveTeammates([
+        const Teammate(username: '_palakdeep', isCurrentUser: false),
+      ]);
       await repo.initialize();
 
       expect(
@@ -274,6 +293,10 @@ void main() {
     });
 
     test('Removes a teammate properly', () async {
+      await storageService.saveTeammates([
+        const Teammate(username: '_palakdeep', isCurrentUser: false),
+        const Teammate(username: 'janhavi0411', isCurrentUser: false),
+      ]);
       await repo.initialize();
       expect(repo.rawTeammates.length, 2);
 
@@ -727,10 +750,10 @@ void main() {
       await tester.tap(appBarSignOut);
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign out of primary profile?'), findsOneWidget);
+      expect(find.text('Sign out of LeetTrack?'), findsOneWidget);
       expect(
           find.textContaining(
-              'Are you sure you want to sign out of @user_to_sign_out'),
+              'Are you sure you want to sign out of your account'),
           findsOneWidget);
 
       // Test 1: Cancel dialog -> state preserved
@@ -753,11 +776,8 @@ void main() {
       await tester.tap(dialogSignOut);
       await tester.pumpAndSettle();
 
-      // Primary profile state is cleared
-      expect(repo.hasPrimaryProfile, isFalse);
-      expect(repo.primaryUsername, isNull);
-      expect(await storageService.getPrimaryUsername(), isNull);
-      expect(await storageService.getPrimaryProfile(), isNull);
+      // Primary profile is preserved in durable storage (not deleted on sign-out)
+      expect(await storageService.getPrimaryUsername(), 'user_to_sign_out');
 
       // Teammate roster remains preserved!
       final preservedTeammates = await storageService.loadTeammates();

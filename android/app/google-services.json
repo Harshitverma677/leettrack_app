@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "82470437776",
+    "project_id": "leetrack-5284d",
+    "storage_bucket": "leetrack-5284d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:82470437776:android:5a75312366f5e4d3fba915",
+        "android_client_info": {
+          "package_name": "com.leeto.leeto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjFBPfiuNCz4qeJQI8_m_nX6dPfhxs1Lo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the user is the owner of this path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      // Read allowed only for the authenticated owner
+      allow read: if isOwner(userId);
+
+      // Create requires authenticated owner and matching uid field
+      allow create: if isOwner(userId)
+                    && request.resource.data.uid == userId;
+
+      // Update allowed only to owner, preventing transfer of ownership
+      allow update: if isOwner(userId)
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid']) || request.resource.data.uid == userId);
+
+      // Delete allowed only to the authenticated owner
+      allow delete: if isOwner(userId);
+
+      match /members/{memberId} {
+        // Read allowed only for the authenticated owner
+        allow read: if isOwner(userId);
+
+        // Create requires authenticated owner and matching ownerUid field
+        allow create: if isOwner(userId)
+                      && request.resource.data.ownerUid == userId;
+
+        // Update allowed only to owner and cannot reassign ownerUid
+        allow update: if isOwner(userId)
+                      && request.resource.data.ownerUid == userId
+                      && (!resource.data.keys().hasAll(['ownerUid']) || resource.data.ownerUid == userId);
+
+        // Delete allowed only to the authenticated owner (no request.resource check on delete)
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

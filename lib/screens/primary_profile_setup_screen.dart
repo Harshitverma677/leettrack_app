@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../repositories/teammate_repository.dart';
@@ -237,6 +238,21 @@ class _PrimaryProfileSetupScreenState extends State<PrimaryProfileSetupScreen> {
                 ),
 
                 const SizedBox(height: 18),
+
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          await FirebaseAuth.instance.signOut();
+                        },
+                  child: const Text(
+                    'Sign out of account',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

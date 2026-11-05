@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/submission_heatmap.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class UserProfileScreen extends StatelessWidget {
   const UserProfileScreen({super.key});
@@ -77,62 +78,46 @@ class UserProfileScreen extends StatelessWidget {
     }
   }
 
-  void _confirmSignOut(
-    BuildContext context,
-    TeammateRepository repo,
-    String primaryUsername,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.cardSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          side: const BorderSide(color: AppColors.cardBorder),
-        ),
-        title: const Text(
-          'Sign out of primary profile?',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: Text(
-          'Are you sure you want to sign out of @$primaryUsername?',
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 14,
-            height: 1.4,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textMuted),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Sign Out',
-              style: TextStyle(
-                color: AppColors.hard,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
 
-    if (confirmed == true && context.mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      await repo.signOutPrimaryProfile();
-    }
+Future<void> _confirmSignOut(
+  BuildContext context,
+  TeammateRepository repo,
+  String primaryUsername,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Sign out of LeetTrack?'),
+      content: Text(
+        'Are you sure you want to sign out of your account '
+        'while keeping your LeetCode profile @$primaryUsername?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Sign Out'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true || !context.mounted) return;
+
+  try {
+    // Return to the root route before signing out.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    // Sign out of Firebase without deleting the LeetCode profile.
+    await FirebaseAuth.instance.signOut();
+  } catch (e) {
+    debugPrint('Sign out failed: $e');
   }
+}
+
 
   @override
   Widget build(BuildContext context) {

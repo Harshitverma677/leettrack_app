@@ -5,13 +5,6 @@ import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
 
 class LocalStorageService {
-  static const String _keyPrimaryUsername = 'leeto_primary_username';
-  static const String _keyPrimaryProfile = 'leeto_primary_profile';
-  static const String _keyPrimarySubmissions = 'leeto_primary_submissions';
-  static const String _keyTeammates = 'leeto_teammates_roster';
-  static const String _keyDailyGoal = 'leeto_daily_goal';
-  static const String _keyRemindersEnabled = 'leeto_reminders_enabled';
-
   final SharedPreferences _prefs;
 
   LocalStorageService(this._prefs);
@@ -21,18 +14,35 @@ class LocalStorageService {
     return LocalStorageService(prefs);
   }
 
+  String _keyPrimaryUsername(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_primary_username' : 'leeto_primary_username';
+
+  String _keyPrimaryProfile(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_primary_profile' : 'leeto_primary_profile';
+
+  String _keyPrimarySubmissions(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_primary_submissions' : 'leeto_primary_submissions';
+
+  String _keyTeammates(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_teammates_roster' : 'leeto_teammates_roster';
+
+  String _keyDailyGoal(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_daily_goal' : 'leeto_daily_goal';
+
+  static const String _keyRemindersEnabled = 'leeto_reminders_enabled';
+
   // --- Primary Profile (User's own LeetCode handle and profile) ---
 
-  Future<String?> getPrimaryUsername() async {
-    return _prefs.getString(_keyPrimaryUsername);
+  Future<String?> getPrimaryUsername([String? uid]) async {
+    return _prefs.getString(_keyPrimaryUsername(uid));
   }
 
-  Future<void> savePrimaryUsername(String username) async {
-    await _prefs.setString(_keyPrimaryUsername, username.trim());
+  Future<void> savePrimaryUsername(String username, [String? uid]) async {
+    await _prefs.setString(_keyPrimaryUsername(uid), username.trim());
   }
 
-  Future<LeetCodeProfile?> getPrimaryProfile() async {
-    final raw = _prefs.getString(_keyPrimaryProfile);
+  Future<LeetCodeProfile?> getPrimaryProfile([String? uid]) async {
+    final raw = _prefs.getString(_keyPrimaryProfile(uid));
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = json.decode(raw) as Map<String, dynamic>;
@@ -42,12 +52,12 @@ class LocalStorageService {
     return null;
   }
 
-  Future<void> savePrimaryProfile(LeetCodeProfile profile) async {
-    await _prefs.setString(_keyPrimaryProfile, json.encode(profile.toJson()));
+  Future<void> savePrimaryProfile(LeetCodeProfile profile, [String? uid]) async {
+    await _prefs.setString(_keyPrimaryProfile(uid), json.encode(profile.toJson()));
   }
 
-  Future<List<LeetCodeSubmission>> getPrimarySubmissions() async {
-    final raw = _prefs.getString(_keyPrimarySubmissions);
+  Future<List<LeetCodeSubmission>> getPrimarySubmissions([String? uid]) async {
+    final raw = _prefs.getString(_keyPrimarySubmissions(uid));
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = json.decode(raw) as List<dynamic>;
@@ -61,22 +71,24 @@ class LocalStorageService {
   }
 
   Future<void> savePrimarySubmissions(
-      List<LeetCodeSubmission> submissions) async {
+    List<LeetCodeSubmission> submissions, [
+    String? uid,
+  ]) async {
     final jsonList = submissions.map((s) => s.toJson()).toList();
-    await _prefs.setString(_keyPrimarySubmissions, json.encode(jsonList));
+    await _prefs.setString(_keyPrimarySubmissions(uid), json.encode(jsonList));
   }
 
   /// Clear only the saved primary LeetCode username and cached primary profile
-  Future<void> clearPrimaryProfile() async {
-    await _prefs.remove(_keyPrimaryUsername);
-    await _prefs.remove(_keyPrimaryProfile);
-    await _prefs.remove(_keyPrimarySubmissions);
+  Future<void> clearPrimaryProfile([String? uid]) async {
+    await _prefs.remove(_keyPrimaryUsername(uid));
+    await _prefs.remove(_keyPrimaryProfile(uid));
+    await _prefs.remove(_keyPrimarySubmissions(uid));
   }
 
   // --- Teammate Roster (Separate from Primary Profile) ---
 
-  Future<List<Teammate>> loadTeammates() async {
-    final raw = _prefs.getString(_keyTeammates);
+  Future<List<Teammate>> loadTeammates([String? uid]) async {
+    final raw = _prefs.getString(_keyTeammates(uid));
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = json.decode(raw) as List<dynamic>;
@@ -87,42 +99,29 @@ class LocalStorageService {
       } catch (_) {}
     }
 
-    // Default showcase teammates (only peers, no primary user)
-    final initialRoster = [
-      const Teammate(
-        username: '_palakdeep',
-        displayName: 'Palakdeep',
-        isCurrentUser: false,
-      ),
-      const Teammate(
-        username: 'janhavi0411',
-        displayName: 'janhavi',
-        isCurrentUser: false,
-      ),
-    ];
-
-    await saveTeammates(initialRoster);
-    return initialRoster;
+    // Do NOT seed showcase/placeholder teammates.
+    // Leaderboard immediately after setup must contain ONLY the primary user.
+    return [];
   }
 
-  Future<void> saveTeammates(List<Teammate> teammates) async {
+  Future<void> saveTeammates(List<Teammate> teammates, [String? uid]) async {
     final jsonList = teammates.map((t) => t.toJson()).toList();
-    await _prefs.setString(_keyTeammates, json.encode(jsonList));
+    await _prefs.setString(_keyTeammates(uid), json.encode(jsonList));
   }
 
   /// Wipe teammate records only, strictly preserving primary profile and preferences
-  Future<void> clearTeammates() async {
-    await _prefs.remove(_keyTeammates);
+  Future<void> clearTeammates([String? uid]) async {
+    await _prefs.remove(_keyTeammates(uid));
   }
 
   // --- Study Goals & Reminders ---
 
-  Future<int> getDailyGoal() async {
-    return _prefs.getInt(_keyDailyGoal) ?? 2;
+  Future<int> getDailyGoal([String? uid]) async {
+    return _prefs.getInt(_keyDailyGoal(uid)) ?? 2;
   }
 
-  Future<void> setDailyGoal(int goal) async {
-    await _prefs.setInt(_keyDailyGoal, goal);
+  Future<void> setDailyGoal(int goal, [String? uid]) async {
+    await _prefs.setInt(_keyDailyGoal(uid), goal);
   }
 
   Future<bool> getRemindersEnabled() async {

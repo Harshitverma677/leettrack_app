@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:leeto/services/notification_service.dart';
 import 'package:provider/provider.dart';
 import '../models/daily_challenge.dart';
 import '../models/teammate.dart';
@@ -24,6 +25,13 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _searchController = TextEditingController();
+  NotificationService notificationService = NotificationService();
+
+  @override
+  void initState() {
+    super.initState();
+    notificationService.requestNotificationService();
+  }
 
   @override
   void dispose() {

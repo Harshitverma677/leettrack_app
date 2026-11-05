@@ -4,6 +4,7 @@ import '../models/daily_challenge.dart';
 import '../models/leetcode_profile.dart';
 import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
+import '../services/firestore_service.dart';
 import '../services/leetcode_graphql_service.dart';
 import '../services/local_storage_service.dart';
 
@@ -16,7 +17,9 @@ enum SortType {
 class TeammateRepository extends ChangeNotifier {
   final LeetCodeGraphQLService graphQLService;
   final LocalStorageService storageService;
+  final FirestoreService? firestoreService;
 
+  String? _currentUserId;
   String? _primaryUsername;
   LeetCodeProfile? _primaryProfile;
   List<LeetCodeSubmission> _primarySubmissions = [];
@@ -34,8 +37,10 @@ class TeammateRepository extends ChangeNotifier {
   TeammateRepository({
     required this.graphQLService,
     required this.storageService,
+    this.firestoreService,
   });
 
+  String? get currentUserId => _currentUserId;
   bool get isInitialized => _isInitialized;
   bool get hasPrimaryProfile =>
       _primaryUsername != null && _primaryUsername!.trim().isNotEmpty;
@@ -150,10 +155,105 @@ class TeammateRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Initialize from local storage on app start
-  Future<void> initialize() async {
+  /// Bind the repository to an authenticated user (or null on sign out)
+  Future<void> bindUser(String? uid) async {
+    if (uid == null) {
+      // User signed out: clear in-memory state cleanly to avoid data leakage
+      _currentUserId = null;
+      _primaryUsername = null;
+      _primaryProfile = null;
+      _primarySubmissions = [];
+      _teammates = [];
+      _dailyChallenge = null;
+      _errorMessage = null;
+      _isInitialized = true;
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    // Prevent redundant sync if already bound and loaded
+    if (_currentUserId == uid && _isInitialized && !_isLoading) {
+      return;
+    }
+
+    _currentUserId = uid;
     _isLoading = true;
     _errorMessage = null;
+    notifyListeners();
+
+    try {
+      // 1. Read cached state for this UID for fast display
+      _primaryUsername = await storageService.getPrimaryUsername(uid);
+      _primaryProfile = await storageService.getPrimaryProfile(uid);
+      _primarySubmissions = await storageService.getPrimarySubmissions(uid);
+      _dailyGoal = await storageService.getDailyGoal(uid);
+      _teammates = await storageService.loadTeammates(uid);
+
+      // 2. Fetch authoritative state from Cloud Firestore if available
+      if (firestoreService != null) {
+        final userDoc = await firestoreService!.getUserDocument(uid);
+        if (userDoc != null && userDoc['primaryProfileSetupComplete'] == true) {
+          final cloudHandle = userDoc['primaryLeetCodeUsername']?.toString();
+          final rawProfile = userDoc['primaryLeetCodeProfile'];
+
+          if (cloudHandle != null && cloudHandle.isNotEmpty) {
+            _primaryUsername = cloudHandle;
+            await storageService.savePrimaryUsername(cloudHandle, uid);
+          }
+
+          if (rawProfile is Map<String, dynamic>) {
+            _primaryProfile = LeetCodeProfile.fromJson(rawProfile);
+            await storageService.savePrimaryProfile(_primaryProfile!, uid);
+          } else if (rawProfile is Map) {
+            _primaryProfile =
+                LeetCodeProfile.fromJson(Map<String, dynamic>.from(rawProfile));
+            await storageService.savePrimaryProfile(_primaryProfile!, uid);
+          }
+        } else if (userDoc != null &&
+            userDoc['primaryProfileSetupComplete'] != true) {
+          // Cloud indicates profile setup is not complete
+          _primaryUsername = null;
+          _primaryProfile = null;
+          _primarySubmissions = [];
+          await storageService.clearPrimaryProfile(uid);
+        }
+
+        // 3. Load cloud members subcollection
+        final cloudMembers = await firestoreService!.getMembers(uid);
+        _teammates = cloudMembers;
+
+        // Ensure primary profile is never duplicated inside peer teammates roster
+        if (_primaryUsername != null) {
+          final pLower = _primaryUsername!.toLowerCase();
+          _teammates.removeWhere((t) => t.username.toLowerCase() == pLower);
+        }
+        await storageService.saveTeammates(_teammates, uid);
+      }
+
+      _isInitialized = true;
+      _isLoading = false;
+      notifyListeners();
+
+      // If primary profile is configured, fetch live stats in background
+      if (hasPrimaryProfile) {
+        unawaited(refreshAll(silent: true));
+      }
+    } catch (e) {
+      _isInitialized = true;
+      _isLoading = false;
+      _errorMessage = 'Cloud sync error: $e';
+      notifyListeners();
+    }
+  }
+
+  /// Initialize fallback (for local-only / tests)
+  Future<void> initialize() async {
+    if (_currentUserId != null) {
+      await bindUser(_currentUserId);
+      return;
+    }
+    _isLoading = true;
     notifyListeners();
 
     try {
@@ -163,7 +263,6 @@ class TeammateRepository extends ChangeNotifier {
       _dailyGoal = await storageService.getDailyGoal();
       _teammates = await storageService.loadTeammates();
 
-      // Ensure primary profile is never displayed inside teammates roster
       if (_primaryUsername != null) {
         final pLower = _primaryUsername!.toLowerCase();
         _teammates.removeWhere((t) => t.username.toLowerCase() == pLower);
@@ -173,7 +272,6 @@ class TeammateRepository extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      // If primary profile is configured, trigger live sync in background
       if (hasPrimaryProfile) {
         unawaited(refreshAll(silent: true));
       }
@@ -185,7 +283,7 @@ class TeammateRepository extends ChangeNotifier {
     }
   }
 
-  /// Setup and verify the user's primary LeetCode profile on first launch
+  /// Setup and verify the user's primary LeetCode profile
   Future<void> setupPrimaryProfile(String username) async {
     final trimmed = username.trim();
     if (trimmed.isEmpty) {
@@ -197,29 +295,41 @@ class TeammateRepository extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Query LeetCode GraphQL to verify profile exists
+      // 1. Verify username against LeetCode GraphQL
       final profile = await graphQLService.fetchUserProfile(trimmed);
       List<LeetCodeSubmission> submissions = [];
       try {
         submissions = await graphQLService.fetchRecentSubmissions(trimmed);
       } catch (_) {}
 
-      _primaryUsername = profile.username.isNotEmpty ? profile.username : trimmed;
+      // 2. Persist to Firestore under currently authenticated user
+      if (_currentUserId != null && firestoreService != null) {
+        await firestoreService!.savePrimaryProfile(
+          uid: _currentUserId!,
+          username: trimmed,
+          profile: profile,
+        );
+      }
+
+      final displayUsername =
+          profile.username.isNotEmpty ? profile.username : trimmed;
+      _primaryUsername = displayUsername;
       _primaryProfile = profile;
       _primarySubmissions = submissions;
 
-      await storageService.savePrimaryUsername(_primaryUsername!);
-      await storageService.savePrimaryProfile(profile);
-      await storageService.savePrimarySubmissions(submissions);
+      await storageService.savePrimaryUsername(displayUsername, _currentUserId);
+      await storageService.savePrimaryProfile(profile, _currentUserId);
+      await storageService.savePrimarySubmissions(submissions, _currentUserId);
 
       // Ensure primary user is not in teammates
-      _teammates.removeWhere((t) => t.username.toLowerCase() == _primaryUsername!.toLowerCase());
-      await storageService.saveTeammates(_teammates);
+      _teammates.removeWhere(
+          (t) => t.username.toLowerCase() == displayUsername.toLowerCase());
+      await storageService.saveTeammates(_teammates, _currentUserId);
 
       _isLoading = false;
       notifyListeners();
 
-      // Background fetch daily challenge and teammates
+      // Trigger background sync
       unawaited(refreshAll(silent: true));
     } catch (e) {
       _isLoading = false;
@@ -250,13 +360,13 @@ class TeammateRepository extends ChangeNotifier {
           final updatedPrimary =
               await graphQLService.fetchUserProfile(_primaryUsername!);
           _primaryProfile = updatedPrimary;
-          await storageService.savePrimaryProfile(updatedPrimary);
+          await storageService.savePrimaryProfile(updatedPrimary, _currentUserId);
         } catch (_) {}
         try {
           final updatedSubs =
               await graphQLService.fetchRecentSubmissions(_primaryUsername!);
           _primarySubmissions = updatedSubs;
-          await storageService.savePrimarySubmissions(updatedSubs);
+          await storageService.savePrimarySubmissions(updatedSubs, _currentUserId);
         } catch (_) {}
       }
 
@@ -274,7 +384,7 @@ class TeammateRepository extends ChangeNotifier {
 
       _teammates = updatedList;
       _lastSyncTime = DateTime.now();
-      await storageService.saveTeammates(_teammates);
+      await storageService.saveTeammates(_teammates, _currentUserId);
     } catch (e) {
       if (!silent) {
         _errorMessage = 'Failed to refresh data: $e';
@@ -293,13 +403,13 @@ class TeammateRepository extends ChangeNotifier {
       final updatedPrimary =
           await graphQLService.fetchUserProfile(_primaryUsername!);
       _primaryProfile = updatedPrimary;
-      await storageService.savePrimaryProfile(updatedPrimary);
+      await storageService.savePrimaryProfile(updatedPrimary, _currentUserId);
 
       try {
         final updatedSubs =
             await graphQLService.fetchRecentSubmissions(_primaryUsername!);
         _primarySubmissions = updatedSubs;
-        await storageService.savePrimarySubmissions(updatedSubs);
+        await storageService.savePrimarySubmissions(updatedSubs, _currentUserId);
       } catch (_) {}
 
       notifyListeners();
@@ -316,12 +426,12 @@ class TeammateRepository extends ChangeNotifier {
     final current = _teammates[idx];
     final updated = await graphQLService.fetchFullTeammateData(current);
     _teammates[idx] = updated.copyWith(isCurrentUser: false);
-    await storageService.saveTeammates(_teammates);
+    await storageService.saveTeammates(_teammates, _currentUserId);
     notifyListeners();
     return _teammates[idx];
   }
 
-  /// Verify and add a new teammate
+  /// Verify and add a new teammate to cloud and local state
   Future<void> addTeammate(String username, {String? displayName}) async {
     final trimmedUser = username.trim();
     if (trimmedUser.isEmpty) {
@@ -346,11 +456,26 @@ class TeammateRepository extends ChangeNotifier {
 
     // Fetch from LeetCode GraphQL to verify existence and fetch data
     final profile = await graphQLService.fetchUserProfile(trimmedUser);
-    final submissions =
-        await graphQLService.fetchRecentSubmissions(trimmedUser);
+    List<LeetCodeSubmission> submissions = [];
+    try {
+      submissions = await graphQLService.fetchRecentSubmissions(trimmedUser);
+    } catch (_) {}
+
+    final validatedHandle =
+        profile.username.isNotEmpty ? profile.username : trimmedUser;
+
+    // Persist to Cloud Firestore under current user's members subcollection
+    if (_currentUserId != null && firestoreService != null) {
+      await firestoreService!.addMember(
+        uid: _currentUserId!,
+        username: validatedHandle,
+        displayName: displayName,
+        profile: profile,
+      );
+    }
 
     final newTeammate = Teammate(
-      username: profile.username.isNotEmpty ? profile.username : trimmedUser,
+      username: validatedHandle,
       displayName: (displayName != null && displayName.trim().isNotEmpty)
           ? displayName.trim()
           : null,
@@ -362,47 +487,54 @@ class TeammateRepository extends ChangeNotifier {
     );
 
     _teammates.add(newTeammate);
-    await storageService.saveTeammates(_teammates);
+    await storageService.saveTeammates(_teammates, _currentUserId);
     notifyListeners();
   }
 
-  /// Wipe all teammate records, strictly preserving primary profile
+  /// Wipe all teammate records from cloud and local roster, preserving primary profile
   Future<int> wipeTeammates() async {
-    final count = _teammates.length;
+    int count = _teammates.length;
+    if (_currentUserId != null && firestoreService != null) {
+      count = await firestoreService!.wipeMembers(_currentUserId!);
+    }
     _teammates.clear();
-    await storageService.clearTeammates();
+    await storageService.clearTeammates(_currentUserId);
     notifyListeners();
     return count;
   }
 
-  /// Remove single teammate from local roster
+  /// Remove single teammate from cloud and local roster
   Future<void> removeTeammate(String username) async {
     // Primary profile cannot be deleted via teammate removal
     if (_primaryUsername != null &&
         username.toLowerCase() == _primaryUsername!.toLowerCase()) {
       return;
     }
+
+    if (_currentUserId != null && firestoreService != null) {
+      await firestoreService!.removeMember(_currentUserId!, username);
+    }
+
     _teammates.removeWhere(
       (t) => t.username.toLowerCase() == username.toLowerCase(),
     );
-    await storageService.saveTeammates(_teammates);
+    await storageService.saveTeammates(_teammates, _currentUserId);
     notifyListeners();
   }
 
-  /// Sign out primary profile: clears only primary profile and username from storage and state.
-  /// Does NOT touch teammate profiles, their local roster, or unrelated preferences.
+  /// Sign out primary profile locally
   Future<void> signOutPrimaryProfile() async {
     _primaryUsername = null;
     _primaryProfile = null;
     _primarySubmissions = [];
-    await storageService.clearPrimaryProfile();
+    await storageService.clearPrimaryProfile(_currentUserId);
     notifyListeners();
   }
 
   /// Update daily problem goal
   Future<void> updateDailyGoal(int goal) async {
     _dailyGoal = goal;
-    await storageService.setDailyGoal(goal);
+    await storageService.setDailyGoal(goal, _currentUserId);
     notifyListeners();
   }
 
