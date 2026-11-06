@@ -1,0 +1,6 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/Leeto Coding Progress Icon.png"
+  adaptive_icon_background: "#080B24"
+  adaptive_icon_foreground: "assets/icon/Leeto Coding Progress Icon.png"

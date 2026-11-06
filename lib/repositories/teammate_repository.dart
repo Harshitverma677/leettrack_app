@@ -188,6 +188,7 @@ class TeammateRepository extends ChangeNotifier {
       _primaryProfile = await storageService.getPrimaryProfile(uid);
       _primarySubmissions = await storageService.getPrimarySubmissions(uid);
       _dailyGoal = await storageService.getDailyGoal(uid);
+      _dailyChallenge = await storageService.getDailyChallenge(uid);
       _teammates = await storageService.loadTeammates(uid);
 
       // 2. Fetch authoritative state from Cloud Firestore if available
@@ -221,7 +222,16 @@ class TeammateRepository extends ChangeNotifier {
 
         // 3. Load cloud members subcollection
         final cloudMembers = await firestoreService!.getMembers(uid);
-        _teammates = cloudMembers;
+        final cachedSubsByUsername = {
+          for (final t in _teammates) t.username.toLowerCase(): t.recentSubmissions
+        };
+        _teammates = cloudMembers.map((cm) {
+          final cachedSubs = cachedSubsByUsername[cm.username.toLowerCase()];
+          if (cachedSubs != null && cachedSubs.isNotEmpty) {
+            return cm.copyWith(recentSubmissions: cachedSubs);
+          }
+          return cm;
+        }).toList();
 
         // Ensure primary profile is never duplicated inside peer teammates roster
         if (_primaryUsername != null) {
@@ -261,6 +271,7 @@ class TeammateRepository extends ChangeNotifier {
       _primaryProfile = await storageService.getPrimaryProfile();
       _primarySubmissions = await storageService.getPrimarySubmissions();
       _dailyGoal = await storageService.getDailyGoal();
+      _dailyChallenge = await storageService.getDailyChallenge();
       _teammates = await storageService.loadTeammates();
 
       if (_primaryUsername != null) {
@@ -351,7 +362,11 @@ class TeammateRepository extends ChangeNotifier {
     try {
       // 1. Fetch Daily Challenge
       try {
-        _dailyChallenge = await graphQLService.fetchDailyChallenge();
+        final fetchedDaily = await graphQLService.fetchDailyChallenge();
+        if (fetchedDaily != null) {
+          _dailyChallenge = fetchedDaily;
+          await storageService.saveDailyChallenge(fetchedDaily, _currentUserId);
+        }
       } catch (_) {}
 
       // 2. Refresh Primary Profile if configured

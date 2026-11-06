@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -10,7 +11,7 @@ class NotificationService {
 
   static final NotificationService instance = NotificationService._();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -30,6 +31,10 @@ class NotificationService {
   /// Requests notification permission, initializes local notifications,
   /// and registers this device's FCM token for the authenticated LEETO user.
   Future<void> initializeForUser(String uid) async {
+    if (Firebase.apps.isEmpty) {
+      debugPrint('LEETO: Firebase is not initialized, skipping FCM registration.');
+      return;
+    }
     if (_activeUid == uid && _tokenRefreshSubscription != null) return;
 
     await _tokenRefreshSubscription?.cancel();
@@ -118,8 +123,12 @@ class NotificationService {
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     final title = message.notification?.title ?? 'Accepted submission 🎉';
+    final rawDisplayName = (message.data['displayName'] as String?)?.trim();
+    final effectiveName = (rawDisplayName != null && rawDisplayName.isNotEmpty)
+        ? rawDisplayName
+        : (message.data['username'] ?? 'Your teammate');
     final body = message.notification?.body ??
-        '${message.data['username'] ?? 'Your teammate'} solved '
+        '$effectiveName solved '
             '${message.data['title'] ?? 'a LeetCode problem'}';
 
     await _localNotifications.show(
@@ -175,6 +184,10 @@ class NotificationService {
   }
 
   Future<void> stopForSignOut() async {
+    if (Firebase.apps.isEmpty) {
+      _activeUid = null;
+      return;
+    }
     final uid = _activeUid;
     await _tokenRefreshSubscription?.cancel();
     await _foregroundMessageSubscription?.cancel();

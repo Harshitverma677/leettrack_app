@@ -347,6 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         return TeammateCard(
                           rank: index + 1,
                           teammate: teammate,
+                          hasSolvedPotd: teammate.hasSolvedDailyChallenge(daily),
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
@@ -438,7 +439,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final title = daily.title;
     final difficulty = daily.difficulty;
-    final topic = daily.topic;
+    final topics = daily.topics.isNotEmpty
+        ? daily.topics
+        : (daily.topic.isNotEmpty ? [daily.topic] : ['Algorithms']);
 
     Color diffColor = AppColors.medium;
     if (difficulty.toLowerCase() == 'easy') diffColor = AppColors.easy;
@@ -523,38 +526,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 12),
 
-                // Bottom Topic & Solve Now Action
+                // Bottom Topics & Solve Now Action
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.dailyChallengeTag,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            topic,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.primaryLight,
-                              fontWeight: FontWeight.w500,
+                    // All Topic Tags
+                    Expanded(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: topics.map((t) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Source: LeetCode Official GraphQL',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
+                            decoration: BoxDecoration(
+                              color: AppColors.dailyChallengeTag,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              t,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.primaryLight,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
+                    const SizedBox(width: 10),
                     const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

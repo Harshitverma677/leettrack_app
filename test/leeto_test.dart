@@ -21,6 +21,7 @@ import 'package:leeto/services/leetcode_graphql_service.dart';
 import 'package:leeto/services/local_storage_service.dart';
 import 'package:leeto/theme/app_theme.dart';
 import 'package:leeto/widgets/submission_tile.dart';
+import 'package:leeto/widgets/teammate_card.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -80,7 +81,7 @@ void main() {
       expect(profile.maxStreakInPastOneYear, 2);
     });
 
-    test('DailyChallenge parses GraphQL JSON correctly', () {
+    test('DailyChallenge parses GraphQL JSON with all topic tags correctly', () {
       final json = {
         'activeDailyCodingChallengeQuestion': {
           'date': '2026-10-23',
@@ -90,7 +91,9 @@ void main() {
             'titleSlug': 'test-problem',
             'difficulty': 'Medium',
             'topicTags': [
-              {'name': 'Dynamic Programming', 'slug': 'dynamic-programming'}
+              {'name': 'Dynamic Programming', 'slug': 'dynamic-programming'},
+              {'name': 'Array', 'slug': 'array'},
+              {'name': 'Greedy', 'slug': 'greedy'},
             ],
           },
         },
@@ -100,6 +103,7 @@ void main() {
       expect(daily.title, 'Test Daily Problem');
       expect(daily.difficulty, 'Medium');
       expect(daily.topic, 'Dynamic Programming');
+      expect(daily.topics, ['Dynamic Programming', 'Array', 'Greedy']);
       expect(daily.link, 'https://leetcode.com/problems/test-problem/');
     });
 
@@ -985,6 +989,240 @@ void main() {
       expect(
           find.text('Problem URL slug unavailable for "Problem Without Slug"'),
           findsOneWidget);
+    });
+
+    testWidgets('TeammateCard displays POTD badge ONLY when hasSolvedPotd is true',
+        (tester) async {
+      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final dailyChallenge = const DailyChallenge(
+        date: '2026-11-06',
+        title: 'Trapping Rain Water',
+        titleSlug: 'trapping-rain-water',
+        difficulty: 'Hard',
+        topic: 'Dynamic Programming',
+        link: 'https://leetcode.com/problems/trapping-rain-water/',
+      );
+
+      // Teammate who solved a RANDOM problem today (NOT the POTD)
+      final teammateRandomProblem = Teammate(
+        username: 'alice_coder',
+        displayName: 'Alice',
+        recentSubmissions: [
+          LeetCodeSubmission(
+            title: 'Two Sum',
+            titleSlug: 'two-sum',
+            timestamp: nowSec - 600, // 10 minutes ago
+            statusDisplay: 'Accepted',
+          ),
+        ],
+      );
+
+      // Teammate who solved the actual POTD question today
+      final teammatePotdProblem = Teammate(
+        username: 'bob_coder',
+        displayName: 'Bob',
+        recentSubmissions: [
+          LeetCodeSubmission(
+            title: 'Trapping Rain Water',
+            titleSlug: 'trapping-rain-water',
+            timestamp: nowSec - 600, // 10 minutes ago
+            statusDisplay: 'Accepted',
+          ),
+        ],
+      );
+
+      // Teammate who solved the POTD question 2 years ago (not today)
+      final teammateOldPotdProblem = Teammate(
+        username: 'charlie_coder',
+        displayName: 'Charlie',
+        recentSubmissions: [
+          LeetCodeSubmission(
+            title: 'Trapping Rain Water',
+            titleSlug: 'trapping-rain-water',
+            timestamp: nowSec - (730 * 86400), // 2 years ago
+            statusDisplay: 'Accepted',
+          ),
+        ],
+      );
+
+      // Verify model checks
+      expect(teammateRandomProblem.hasSolvedDailyChallenge(dailyChallenge), isFalse);
+      expect(teammateOldPotdProblem.hasSolvedDailyChallenge(dailyChallenge), isFalse);
+      expect(teammatePotdProblem.hasSolvedDailyChallenge(dailyChallenge), isTrue);
+
+      // Verify TeammateCard widget renders POTD badge ONLY for teammatePotdProblem
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: Column(
+              children: [
+                TeammateCard(
+                  rank: 1,
+                  teammate: teammateRandomProblem,
+                  hasSolvedPotd: teammateRandomProblem.hasSolvedDailyChallenge(dailyChallenge),
+                  onTap: () {},
+                  onRemove: () {},
+                ),
+                TeammateCard(
+                  rank: 2,
+                  teammate: teammatePotdProblem,
+                  hasSolvedPotd: teammatePotdProblem.hasSolvedDailyChallenge(dailyChallenge),
+                  onTap: () {},
+                  onRemove: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Only ONE 'POTD' badge must be found in the entire tree (on Bob's card, not Alice's)
+      expect(find.text('POTD'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Daily Challenge card displays all topics and removes Source LeetCode Official GraphQL text',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'alex_coder',
+      });
+      final storageService = await LocalStorageService.create();
+      final dailyChallengeWithMultipleTopics = const DailyChallenge(
+        date: '2026-11-06',
+        title: 'Network Delay Time',
+        titleSlug: 'network-delay-time',
+        difficulty: 'Medium',
+        topic: 'Graph',
+        topics: ['Graph', 'Breadth-First Search', 'Shortest Path', 'Heap (Priority Queue)'],
+        link: 'https://leetcode.com/problems/network-delay-time/',
+      );
+      await storageService.saveDailyChallenge(dailyChallengeWithMultipleTopics);
+
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TeammateRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: const DashboardScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verify all topics are displayed
+      expect(find.text('Network Delay Time'), findsOneWidget);
+      expect(find.text('Graph'), findsOneWidget);
+      expect(find.text('Breadth-First Search'), findsOneWidget);
+      expect(find.text('Shortest Path'), findsOneWidget);
+      expect(find.text('Heap (Priority Queue)'), findsOneWidget);
+
+      // Verify "Source: LeetCode Official GraphQL" text is REMOVED
+      expect(find.text('Source: LeetCode Official GraphQL'), findsNothing);
+      expect(find.textContaining('LeetCode Official GraphQL'), findsNothing);
+    });
+
+    testWidgets(
+        'TeamActivityScreen allows jumping to a date to view teammate questions and difficulty level',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'leeto_primary_username': 'harshit',
+      });
+      final storageService = await LocalStorageService.create();
+      final now = DateTime.now();
+      final nowSec = now.millisecondsSinceEpoch ~/ 1000;
+      final yesterdaySec = nowSec - 86400;
+
+      // Primary user "harshit"
+      await storageService.savePrimaryProfile(const LeetCodeProfile(
+        username: 'harshit',
+        realName: 'Harshit Verma',
+        totalSolved: 100,
+        easySolved: 50,
+        mediumSolved: 40,
+        hardSolved: 10,
+        streak: 3,
+        hasSolvedToday: false,
+        submissionCalendar: {},
+        topTopics: [],
+      ));
+
+      // Primary user solved "Yesterday Hard Problem" yesterday
+      await storageService.savePrimarySubmissions([
+        LeetCodeSubmission(
+          title: 'Yesterday Hard Problem',
+          titleSlug: 'yesterday-hard-problem',
+          timestamp: yesterdaySec,
+          difficulty: 'Hard',
+          statusDisplay: 'Accepted',
+        ),
+      ]);
+
+      // Peer teammate "palakdeep" solved "Today Easy Problem" today
+      await storageService.saveTeammates([
+        Teammate(
+          username: 'palakdeep',
+          displayName: 'Palakdeep',
+          recentSubmissions: [
+            LeetCodeSubmission(
+              title: 'Today Easy Problem',
+              titleSlug: 'today-easy-problem',
+              timestamp: nowSec - 300,
+              difficulty: 'Easy',
+              statusDisplay: 'Accepted',
+            ),
+          ],
+        ),
+      ]);
+
+      final graphQLService = LeetCodeGraphQLService();
+      final repo = TeammateRepository(
+        graphQLService: graphQLService,
+        storageService: storageService,
+      );
+      await repo.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: ChangeNotifierProvider<TeammateRepository>.value(
+            value: repo,
+            child: const TeamActivityScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // On Today:
+      // Palakdeep has 1 solve with "Today Easy Problem" and "Easy" difficulty
+      expect(find.text('Today Easy Problem'), findsOneWidget);
+      expect(find.text('Easy'), findsOneWidget);
+
+      // Harshit has 0 solves on Today: shows "No questions completed on this day."
+      expect(find.text('No questions completed on this day.'), findsOneWidget);
+
+      // Tap on "Yesterday" card in the horizontal date selector
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+
+      // On Yesterday:
+      // Harshit has 1 solve with "Yesterday Hard Problem" and "Hard" difficulty
+      expect(find.text('Yesterday Hard Problem'), findsOneWidget);
+      expect(find.text('Hard'), findsOneWidget);
+
+      // Palakdeep has 0 solves on Yesterday: shows "No questions completed on this day."
+      expect(find.text('No questions completed on this day.'), findsOneWidget);
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/daily_challenge.dart';
 import '../models/teammate.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -6,6 +7,8 @@ import '../theme/app_dimensions.dart';
 class TeammateCard extends StatelessWidget {
   final int rank;
   final Teammate teammate;
+  final bool? hasSolvedPotd;
+  final DailyChallenge? dailyChallenge;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
@@ -13,11 +16,17 @@ class TeammateCard extends StatelessWidget {
     super.key,
     required this.rank,
     required this.teammate,
+    this.hasSolvedPotd,
+    this.dailyChallenge,
     required this.onTap,
     required this.onRemove,
   });
 
   bool get isRankOne => rank == 1;
+
+  bool get _isPotdSolved =>
+      hasSolvedPotd ??
+      (dailyChallenge != null && teammate.hasSolvedDailyChallenge(dailyChallenge));
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +104,7 @@ class TeammateCard extends StatelessWidget {
                                   borderColor: const Color(0xFF2E4070),
                                 ),
                               ],
-                              if (teammate.hasSolvedToday) ...[
+                              if (_isPotdSolved) ...[
                                 const SizedBox(width: 6),
                                 _buildBadge(
                                   label: 'POTD',

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/daily_challenge.dart';
 import '../models/leetcode_profile.dart';
 import '../models/leetcode_submission.dart';
 import '../models/teammate.dart';
@@ -28,6 +29,9 @@ class LocalStorageService {
 
   String _keyDailyGoal(String? uid) =>
       uid != null && uid.isNotEmpty ? 'leeto_${uid}_daily_goal' : 'leeto_daily_goal';
+
+  String _keyDailyChallenge(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'leeto_${uid}_daily_challenge' : 'leeto_daily_challenge';
 
   static const String _keyRemindersEnabled = 'leeto_reminders_enabled';
 
@@ -122,6 +126,22 @@ class LocalStorageService {
 
   Future<void> setDailyGoal(int goal, [String? uid]) async {
     await _prefs.setInt(_keyDailyGoal(uid), goal);
+  }
+
+  Future<DailyChallenge?> getDailyChallenge([String? uid]) async {
+    final raw = _prefs.getString(_keyDailyChallenge(uid));
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = json.decode(raw) as Map<String, dynamic>;
+        return DailyChallenge.fromJson(decoded);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> saveDailyChallenge(DailyChallenge challenge, [String? uid]) async {
+    await _prefs.setString(
+        _keyDailyChallenge(uid), json.encode(challenge.toJson()));
   }
 
   Future<bool> getRemindersEnabled() async {

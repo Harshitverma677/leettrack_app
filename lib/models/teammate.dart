@@ -1,3 +1,4 @@
+import 'daily_challenge.dart';
 import 'leetcode_profile.dart';
 import 'leetcode_submission.dart';
 
@@ -46,6 +47,75 @@ class Teammate {
   int get streak => profile?.streak ?? 0;
   bool get hasSolvedToday => profile?.hasSolvedToday ?? false;
   double? get contestRating => profile?.contestRating;
+
+  /// Checks whether this teammate solved today's official LeetCode Daily Coding Challenge.
+  /// Strictly checks against the active [DailyChallenge] title or titleSlug and ensures
+  /// the submission was accepted during the challenge window (not an old solve or a random problem).
+  bool hasSolvedDailyChallenge(DailyChallenge? dailyChallenge) {
+    if (dailyChallenge == null || !dailyChallenge.isValid) return false;
+
+    final potdSlug = dailyChallenge.titleSlug.trim().toLowerCase();
+    final potdTitle = dailyChallenge.title.trim().toLowerCase();
+
+    for (final sub in recentSubmissions) {
+      final subSlug = sub.titleSlug.trim().toLowerCase();
+      final subTitle = sub.title.trim().toLowerCase();
+
+      final matchesSlug = potdSlug.isNotEmpty && subSlug == potdSlug;
+      final matchesTitle = potdTitle.isNotEmpty && subTitle == potdTitle;
+
+      if (!matchesSlug && !matchesTitle) continue;
+
+      if (sub.statusDisplay != null &&
+          sub.statusDisplay!.trim().isNotEmpty &&
+          sub.statusDisplay!.trim().toLowerCase() != 'accepted') {
+        continue;
+      }
+
+      if (_isSubmissionForDailyChallenge(sub, dailyChallenge)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static bool _isSubmissionForDailyChallenge(
+    LeetCodeSubmission sub,
+    DailyChallenge dailyChallenge,
+  ) {
+    final challengeDateStr = dailyChallenge.date.trim();
+
+    // 1. Direct UTC calendar date match against dailyChallenge.date (standard LeetCode day)
+    final subUtc =
+        DateTime.fromMillisecondsSinceEpoch(sub.timestamp * 1000, isUtc: true);
+    final subUtcDateStr =
+        '${subUtc.year}-${subUtc.month.toString().padLeft(2, '0')}-${subUtc.day.toString().padLeft(2, '0')}';
+
+    if (challengeDateStr.isNotEmpty && subUtcDateStr == challengeDateStr) {
+      return true;
+    }
+
+    // 2. Local date match: submitted today in user's local timezone
+    final now = DateTime.now();
+    final subLocal = sub.dateTime;
+    final isSameLocalDate = subLocal.year == now.year &&
+        subLocal.month == now.month &&
+        subLocal.day == now.day;
+
+    if (isSameLocalDate) {
+      return true;
+    }
+
+    // 3. Rolling 24-hour window tolerance
+    final nowSec = now.millisecondsSinceEpoch ~/ 1000;
+    final diffSeconds = nowSec - sub.timestamp;
+    if (diffSeconds >= 0 && diffSeconds <= 86400) {
+      return true;
+    }
+
+    return false;
+  }
 
   Teammate copyWith({
     String? username,

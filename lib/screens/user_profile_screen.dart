@@ -112,6 +112,8 @@ Future<void> _confirmSignOut(
     // Remove this device's FCM token while the user is still authenticated.
     await NotificationService.instance.stopForSignOut();
 
+    if (!context.mounted) return;
+
     // Return to the root route before signing out.
     Navigator.of(context).popUntil((route) => route.isFirst);
 
