@@ -2,6 +2,18 @@
 
 A Flutter-based LeetCode team-tracking app with teammate activity, progress insights, and push notifications for new Accepted submissions.
 
+## Backend
+
+The backend polls tracked LeetCode usernames for recent Accepted submissions and sends FCM notifications to LEETO users who track those profiles.
+
+- Reads tracked usernames and FCM tokens from Firestore.
+- Polls each distinct username once per cycle.
+- Sends notifications only for Accepted submissions.
+- Uses Firestore-based deduplication to avoid duplicate notifications.
+- Provides a health-check endpoint and a protected polling endpoint.
+
+**Backend repository:** [leeto-push-notifications](https://github.com/Harshitverma677/leeto-push-notifications)
+
 ## Features
 
 - Track your primary LeetCode profile and teammates.
@@ -35,18 +47,6 @@ leettrack/
 | Hosting | Render Web Service |
 | Scheduled polling | cron-job.org |
 | Source control | Git, GitHub |
-
-## Backend
-
-The backend polls tracked LeetCode usernames for recent Accepted submissions and sends FCM notifications to LEETO users who track those profiles.
-
-- Reads tracked usernames and FCM tokens from Firestore.
-- Polls each distinct username once per cycle.
-- Sends notifications only for Accepted submissions.
-- Uses Firestore-based deduplication to avoid duplicate notifications.
-- Provides a health-check endpoint and a protected polling endpoint.
-
-**Backend repository:** [leeto-push-notifications](https://github.com/Harshitverma677/leeto-push-notifications)
 
 ## Backend API
 
