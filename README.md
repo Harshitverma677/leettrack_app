@@ -1,117 +1,125 @@
-# LEETO
+<div align="center">
 
-A Flutter-based LeetCode team-tracking app with teammate activity, progress insights, and push notifications for new Accepted submissions.
+# 🚀 LEETO
 
-## Backend
+### Track your LeetCode squad. Never miss a solve.
 
-The backend polls tracked LeetCode usernames for recent Accepted submissions and sends FCM notifications to LEETO users who track those profiles.
+A Flutter app to follow teammates' LeetCode progress, with instant push alerts for every Accepted submission.
 
-- Reads tracked usernames and FCM tokens from Firestore.
-- Polls each distinct username once per cycle.
-- Sends notifications only for Accepted submissions.
-- Uses Firestore-based deduplication to avoid duplicate notifications.
-- Provides a health-check endpoint and a protected polling endpoint.
+![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
-**Backend repository:** [leeto-push-notifications](https://github.com/Harshitverma677/leeto-push-notifications)
+</div>
 
-## Features
+---
 
-- Track your primary LeetCode profile and teammates.
-- View team leaderboard and problem-solving statistics.
-- Explore LeetCode-style contribution heatmaps.
-- Follow recent team submissions and activity.
-- Receive push notifications when a tracked teammate submits an Accepted solution.
-- Prevent duplicate notifications through backend deduplication.
+## ✨ Features
 
-## Project Structure
+- 👥 **Team Tracking** – Add your profile and your teammates
+- 🏆 **Leaderboard** – See who's solving the most
+- 📊 **Stats** – Problem-solving insights at a glance
+- 🔥 **Heatmaps** – LeetCode-style contribution calendar
+- 📰 **Activity Feed** – Recent team submissions
+- 🔔 **Push Alerts** – Notified when a teammate gets an Accepted solution
 
-```text
-leettrack/
-├── leettrack-main/
-    └── Flutter application
+---
 
- backend/
-    └── leeto-push-notifications/
-        └── Node.js / TypeScript notification service
+## 📸 Screenshots & Download
+
+<div align="center">
+
+<!-- Add your screenshots here (put images in assets/screenshots/) -->
+<!-- <img src="assets/screenshots/home.png" width="200" /> <img src="assets/screenshots/leaderboard.png" width="200" /> <img src="assets/screenshots/heatmap.png" width="200" /> -->
+
+### 📥 Try the app on Android
+
+[![Download APK](https://img.shields.io/badge/Download-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Harshitverma677/leettrack_app/releases/latest)
+
+</div>
+
+**Install steps:**
+1. 📥 Download the latest `.apk` from [Releases](https://github.com/Harshitverma677/leettrack_app/releases/latest)
+2. ⚙️ Allow **Install from unknown sources** when prompted
+3. 🚀 Open the app and start tracking!
+
+---
+
+## 🛠️ Tech Stack
+
+| Area | Tech |
+| --- | --- |
+| 📱 App | Flutter, Dart |
+| 🔐 Auth & Data | Firebase Auth, Cloud Firestore |
+| 🔔 Notifications | Firebase Cloud Messaging |
+| ⚙️ Backend | Node.js, TypeScript, Express |
+| 🌐 Data Source | LeetCode public GraphQL |
+| ☁️ Hosting | Render, cron-job.org |
+
+---
+
+## 🧠 How It Works
+
+```
+cron-job.org ➜ Backend polls LeetCode ➜ Accepted? ➜ Dedup check ➜ FCM push ➜ 📱 You
 ```
 
-## Technology Stack
+- Each tracked username is polled **once per cycle**
+- Only **Accepted** submissions trigger alerts
+- Firestore deduplication prevents **duplicate notifications**
 
-| Area | Technology |
-|---|---|
-| Mobile app | Flutter, Dart |
-| Authentication and data | Firebase Authentication, Cloud Firestore |
-| Push notifications | Firebase Cloud Messaging (FCM) |
-| Backend | Node.js, TypeScript, Express |
-| LeetCode data | LeetCode public GraphQL endpoint |
-| Hosting | Render Web Service |
-| Scheduled polling | cron-job.org |
-| Source control | Git, GitHub |
+🔗 **Backend repo:** [leeto-push-notifications](https://github.com/Harshitverma677/leeto-push-notifications)
 
-## Backend API
+---
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/health` | Check backend availability |
-| POST | `/internal/run-poll` | Run one polling cycle; requires a Bearer token |
+## ⚡ Getting Started
 
-## Environment Configuration
-
-Configure backend secrets in the hosting provider's environment settings. Do not commit service-account JSON files or `.env` files.
-
-Required backend variables include:
-
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_SERVICE_ACCOUNT_JSON` (or a local service-account file path for development)
-- `POLL_SECRET`
-- `POLL_MAX_CONCURRENCY`
-- `MAX_SUBMISSION_LOOKBACK`
-- `NODE_ENV`
-
-Use `eeto-push-notifications/.env.example` as the local configuration reference.
-
-## Run Locally
-
-### Flutter app
-
-Run from the Flutter project directory:
+### 📱 Run the app
 
 ```bash
-cd leettrack-main
+git clone https://github.com/Harshitverma677/leettrack_app.git
+cd leettrack_app
 flutter pub get
 flutter run
 ```
 
-### Backend
-
-Run from the backend repo by cloning it :
+### ⚙️ Run the backend
 
 ```bash
-cd eeto-push-notifications
+git clone https://github.com/Harshitverma677/leeto-push-notifications.git
+cd leeto-push-notifications
 npm install
 cp .env.example .env
-```
-
-Fill in the required values in `.env`, then run:
-
-```bash
-npm run check
-npm test
 npm run dev
 ```
 
 Health check: `GET http://localhost:3000/health`
 
-## Deployment
+---
 
-- Deploy the backend directory as a Render Web Service.
-- Build command: `npm install --include=dev && npm run build`
-- Start command: `npm start`
-- Configure secrets as Render environment variables.
-- Configure cron-job.org to call `POST /internal/run-poll` on the desired schedule with the `Authorization: Bearer <POLL_SECRET>` header.
+## 🔌 Backend API
 
-## Security
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check server status |
+| `POST` | `/internal/run-poll` | Run one polling cycle (Bearer token required) |
 
-- Never commit Firebase Admin service-account credentials.
-- Never commit `.env` files or expose `POLL_SECRET`.
-- Keep FCM server credentials on the backend only.
+---
+
+## 🔒 Security
+
+- 🚫 Never commit `.env` or service-account JSON files
+- 🔑 Keep `POLL_SECRET` private
+- 🛡️ Keep FCM credentials on the backend only
+
+---
+
+<div align="center">
+
+### 👨‍💻 Built by [Harshit Verma](https://github.com/Harshitverma677)
+
+⭐ Star this repo if you like it!
+
+</div>
